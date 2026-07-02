@@ -25,6 +25,70 @@ def _require_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
 class RawLogRequest(BaseModel):
     raw_text: str
 
+def _insert_parsed_workout(parsed_data):
+    records_to_insert = []
+
+    for entry in parsed_data.entries:
+        canonical_name = normalize_exercise_name(entry.exercise_name)
+        entry.exercise_name = canonical_name
+        records_to_insert.append({
+            "date": entry.date,
+            "exercise": canonical_name,
+            "exercise_name": canonical_name,
+            "exercise_group": get_muscle_info(canonical_name)["main_group"],
+            "sub_muscle_group": get_muscle_info(canonical_name)["sub_group"],
+            "weight": entry.weight if entry.weight is not None else 0.0,
+            "weight_unit": entry.unit,
+            "set_number": 1,
+            "reps": entry.reps,
+            "to_failure": entry.failure,
+            "rir": entry.rir,
+            "notes": entry.notes or ""
+        })
+
+    if records_to_insert:
+        supabase.table("gym_logs").insert(records_to_insert).execute()
+
+    return records_to_insert
+
+@router.post("/log")
+async def log_workout_web(log_data: RawLogRequest):
+    """Web app logging endpoint (no API key required)."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase client not configured")
+
+    try:
+        parsed_data = HistoryService.parse_raw_workout(log_data.raw_text)
+    except Exception as e:
+        print(f"Parsing error: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to parse workout: {str(e)}")
+
+    try:
+        records_to_insert = _insert_parsed_workout(parsed_data)
+        logged_dates = sorted({record["date"] for record in records_to_insert})
+        return {
+            "status": "success",
+            "message": f"Successfully logged {len(records_to_insert)} sets.",
+            "data": parsed_data,
+            "logged_dates": logged_dates,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database insertion error: {str(e)}")
+
+@router.post("/log/parse")
+async def parse_workout_preview(log_data: RawLogRequest):
+    """Parse workout text without saving (used for live preview validation)."""
+    try:
+        parsed_data = HistoryService.parse_raw_workout(log_data.raw_text)
+        logged_dates = sorted({entry.date for entry in parsed_data.entries})
+        return {
+            "status": "success",
+            "data": parsed_data,
+            "logged_dates": logged_dates,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse workout: {str(e)}")
+
 @router.get("/history", response_model=List[WorkoutSession])
 def get_workout_history():
     if not supabase:
@@ -68,37 +132,15 @@ async def quick_log_workout(
         print(f"Parsing error: {e}")
         raise HTTPException(status_code=400, detail=f"Failed to parse workout: {str(e)}")
 
-    # 2. Format the parsed data to match your gym_logs table structure
-    # Based on your GET endpoint, gym_logs expects: date, exercise, weight, weight_unit, sets, reps, notes
     try:
-        records_to_insert = []
-        
-        for entry in parsed_data.entries:
-            canonical_name = normalize_exercise_name(entry.exercise_name)
-            entry.exercise_name = canonical_name
-            records_to_insert.append({
-                "date": entry.date,
-                "exercise": canonical_name,
-                "exercise_name": canonical_name,
-                "exercise_group": get_muscle_info(canonical_name)["main_group"],
-                "sub_muscle_group": get_muscle_info(canonical_name)["sub_group"],
-                "weight": entry.weight if entry.weight is not None else 0.0,
-                "weight_unit": entry.unit,
-                "set_number": 1,
-                "reps": entry.reps,
-                "to_failure": entry.failure,
-                "rir": entry.rir,
-                "notes": entry.notes or "" 
-            })
-        
-        # 3. Bulk insert into Supabase
-        if records_to_insert:
-            supabase.table("gym_logs").insert(records_to_insert).execute()
+        records_to_insert = _insert_parsed_workout(parsed_data)
+        logged_dates = sorted({record["date"] for record in records_to_insert})
 
         return {
             "status": "success", 
             "message": f"Successfully logged {len(records_to_insert)} sets.",
-            "data": parsed_data
+            "data": parsed_data,
+            "logged_dates": logged_dates,
         }
 
     except Exception as e:

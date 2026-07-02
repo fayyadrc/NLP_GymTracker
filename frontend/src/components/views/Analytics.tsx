@@ -24,6 +24,7 @@ import {
   ChevronDown,
   Search,
   X,
+  BarChart2,
   Trophy,
   Flame,
   History,
@@ -145,9 +146,15 @@ export const Analytics: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // Recommended Workout States
-  const [activeSection, setActiveSection] = useState<'general' | 'recommendations'>('general');
+  // Recommended Workout States & Dashboard Tabs
+  const [dashboardTab, setDashboardTab] = useState<'insight' | 'trends'>('insight');
   const [activeSplit, setActiveSplit] = useState<'Push' | 'Pull' | 'Legs' | 'Upper' | 'Lower'>('Push');
+
+  // Progressive Disclosure: Track expanded state for exercise recommendations by name
+  const [expandedAnalysis, setExpandedAnalysis] = useState<Record<string, boolean>>({});
+
+  // Visualization simplification: show e1RM by default
+  const [showEst1RM, setShowEst1RM] = useState(true);
 
   // Backend recommendation results, keyed by normalised exercise name
   const [recommendations, setRecommendations] = useState<Record<string, RecommendationResult>>({});
@@ -172,7 +179,7 @@ export const Analytics: React.FC = () => {
     return null;
   };
 
-  // Generate smart recommendations — backend-first, client-side fallback
+  // Generate smart recommendations (backend-first, client-side fallback)
   const getExerciseRecommendation = (ex: RecommendedExercise) => {
     // 1️⃣  Prefer the backend RecommendationResult if available
     const normalKey = ex.name.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -196,7 +203,7 @@ export const Analytics: React.FC = () => {
       };
     }
 
-    // 2️⃣  Client-side fallback — use exercise history max_weight if available
+    // 2️⃣  Client-side fallback: use exercise history max_weight if available
     const stats = findExerciseStats(ex.name);
     if (!stats) {
       return {
@@ -245,6 +252,53 @@ export const Analytics: React.FC = () => {
     const rawText = rawTextLines.join('\n');
     localStorage.setItem('gym_tracker_draft', rawText);
     (window as any).setActiveView?.('quick-log');
+  };
+
+  // Heuristic to predict today's split based on PPL cycle of last logged workout
+  const predictTodaySplit = (analyticsData: AnalyticsData): 'Push' | 'Pull' | 'Legs' | 'Upper' | 'Lower' => {
+    if (!analyticsData?.exercises_by_muscle) return 'Push';
+
+    const PUSH_MUSCLES = new Set(["Chest", "Shoulders", "Triceps"]);
+    const PULL_MUSCLES = new Set(["Back", "Biceps", "Traps", "Forearms"]);
+    const LEGS_MUSCLES = new Set(["Quads", "Hamstrings", "Glutes", "Calves", "Abs", "Obliques"]);
+
+    const workoutsByDate: Record<string, Record<string, number>> = {};
+
+    Object.entries(analyticsData.exercises_by_muscle).forEach(([muscle, exercises]) => {
+      let split: 'Push' | 'Pull' | 'Legs' = 'Push';
+      if (PUSH_MUSCLES.has(muscle)) split = 'Push';
+      else if (PULL_MUSCLES.has(muscle)) split = 'Pull';
+      else if (LEGS_MUSCLES.has(muscle)) split = 'Legs';
+
+      exercises.forEach(ex => {
+        ex.history?.forEach(pt => {
+          const date = pt.date;
+          if (!workoutsByDate[date]) {
+            workoutsByDate[date] = { Push: 0, Pull: 0, Legs: 0 };
+          }
+          workoutsByDate[date][split] = (workoutsByDate[date][split] || 0) + 1;
+        });
+      });
+    });
+
+    const sortedDates = Object.keys(workoutsByDate).sort();
+    if (sortedDates.length === 0) return 'Push';
+
+    const lastDate = sortedDates[sortedDates.length - 1];
+    const lastDateSplits = workoutsByDate[lastDate];
+
+    let lastSplit: 'Push' | 'Pull' | 'Legs' = 'Push';
+    let maxCount = 0;
+    Object.entries(lastDateSplits).forEach(([splitName, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        lastSplit = splitName as any;
+      }
+    });
+
+    if (lastSplit === 'Push') return 'Pull';
+    if (lastSplit === 'Pull') return 'Legs';
+    return 'Push';
   };
 
   useEffect(() => {
@@ -305,6 +359,13 @@ export const Analytics: React.FC = () => {
     fetchRecommendations();
   }, []);
 
+  useEffect(() => {
+    if (data) {
+      const predicted = predictTodaySplit(data);
+      setActiveSplit(predicted);
+    }
+  }, [data]);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-4">
@@ -331,263 +392,27 @@ export const Analytics: React.FC = () => {
   // Compute current exercises for the active split (prefer dynamic DB data over hardcoded)
   const currentSplitExercises: RecommendedExercise[] = dynamicSplits?.[activeSplit] ?? SPLIT_CONFIG[activeSplit] ?? [];
 
-  if (activeSection === 'recommendations') {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="space-y-8 pt-2 pb-24"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-1">
-          <button
-            onClick={() => setActiveSection('general')}
-            className="flex items-center gap-2 px-3.5 py-2 bg-secondary hover:bg-secondary/80 text-muted-foreground hover:text-foreground rounded-full text-xs font-bold font-heading border border-border hover:border-border/80 transition-all btn-tap-scale shadow-[0_2px_8px_rgba(0,0,0,0.01)]"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
-            Back
-          </button>
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-blue-bg rounded-full border border-accent-blue/10 shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
-            <Sparkles className="w-3.5 h-3.5 text-accent-blue fill-accent-blue/10" />
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-accent-blue font-heading">AI Assistant</span>
-          </div>
-        </div>
-
-        <div className="space-y-1.5 px-1 font-heading">
-          <h2 className="text-3xl font-black tracking-tight text-foreground leading-tight">Recommended Routines</h2>
-          <p className="text-muted-foreground text-sm font-semibold font-sans leading-relaxed">Select a split below. We have analyzed your lifting history to recommend target weights for progressive overload.</p>
-        </div>
-
-        {/* iOS-style Segmented Tab Controller */}
-        <div className="px-1">
-          <div className="bg-secondary/40 p-1.5 rounded-[22px] border border-border/80 flex items-center justify-between gap-1 overflow-x-auto scrollbar-none shadow-[inset_0_2px_4px_rgba(0,0,0,0.01)]">
-            {(['Push', 'Pull', 'Legs', 'Upper', 'Lower'] as const).map((split) => {
-              const isActive = activeSplit === split;
-              const splitIcons = {
-                Push: <Flame className="w-3.5 h-3.5" />,
-                Pull: <Dumbbell className="w-3.5 h-3.5" />,
-                Legs: <TrendingUp className="w-3.5 h-3.5" />,
-                Upper: <Activity className="w-3.5 h-3.5" />,
-                Lower: <Calendar className="w-3.5 h-3.5" />
-              };
-              
-              return (
-                <button
-                  key={split}
-                  onClick={() => setActiveSplit(split)}
-                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-3.5 rounded-[18px] text-xs font-black font-heading transition-all whitespace-nowrap btn-tap-scale ${
-                    isActive
-                      ? 'bg-card text-foreground shadow-[0_4px_16px_rgba(0,0,0,0.04)] border border-border/50'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {splitIcons[split]}
-                  <span className="hidden sm:inline">{split} Split</span>
-                  <span className="sm:hidden">{split}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Exercises in current split - Asymmetric Premium Cards */}
-        <div className="space-y-6 px-1">
-          {currentSplitExercises.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 px-6">
-              <div className="p-4 rounded-2xl bg-secondary/60">
-                <Dumbbell className="w-8 h-8 text-muted-foreground/30" />
-              </div>
-              <p className="text-sm font-bold text-muted-foreground font-heading">No {activeSplit} exercises logged yet</p>
-              <p className="text-xs text-muted-foreground/60 max-w-[260px] leading-relaxed">Log a workout containing {activeSplit.toLowerCase()} exercises and they’ll appear here with personalised recommendations.</p>
-            </div>
-          ) : currentSplitExercises.map((ex, index) => {
-            const rec = getExerciseRecommendation(ex);
-
-            // ── Fatigue badge config ──────────────────────────────────────
-            const fatigueBadge: Record<string, { label: string; cls: string }> = {
-              new:            { label: 'Calibrating',   cls: 'bg-accent-orange-bg text-accent-orange' },
-              clear:          { label: 'Overload Ready', cls: 'bg-accent-green-bg text-accent-green' },
-              overreaching:   { label: 'Scaled Load',   cls: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400' },
-              severe_fatigue: { label: 'Deload',        cls: 'bg-red-500/10 text-red-500' },
-            };
-            const badge = fatigueBadge[rec.fatigue_state] ?? fatigueBadge['clear'];
-
-            // ── Confidence bar ─────────────────────────────────────────────
-            const confidencePct = Math.round((rec.confidence ?? 0) * 100);
-            const sessionsUsed = rec.sessions_used ?? 0;
-
-            return (
-              <motion.div
-                key={ex.name}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="bg-card border border-border rounded-[28px] overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.015)] hover:shadow-md transition-all duration-300 group flex flex-col md:flex-row btn-tap-scale"
-              >
-                {/* Main panel (left/top) */}
-                <div className="p-6 flex-1 flex flex-col justify-between space-y-6 border-b md:border-b-0 md:border-r border-border/50">
-                  {/* Category/Type Indicators */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="ios-badge bg-secondary text-muted-foreground uppercase text-[9px] py-0.5 tracking-wider">
-                        {ex.muscle}
-                      </span>
-                      <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest font-mono">
-                        {ex.type}
-                      </span>
-                      {ex.occurrence_count != null && (
-                        <span className="text-[9px] font-bold text-muted-foreground/40 font-mono">
-                          {ex.occurrence_count} sets
-                        </span>
-                      )}
-                    </div>
-
-                    <span className={`ios-badge uppercase text-[9.5px] font-black ${badge.cls}`}>
-                      {badge.label}
-                    </span>
-                  </div>
-
-                  {/* Title & Large Metric Display */}
-                  <div className="space-y-4">
-                    <h4 className="text-2xl font-black text-foreground font-heading tracking-tight leading-tight group-hover:text-accent-blue transition-colors">
-                      {ex.name}
-                    </h4>
-
-                    {/* Numeric target blocks */}
-                    <div className="flex items-end gap-8 pt-1">
-                      <div className="space-y-0.5">
-                        <span className="text-[9px] uppercase font-black text-muted-foreground/60 tracking-widest font-mono">Target Weight</span>
-                        <p className="text-3xl font-black text-foreground font-mono mt-0.5 leading-none tracking-tight">
-                          {rec.weight > 0 ? (
-                            <>
-                              {rec.weight}{' '}
-                              <span className="text-[11px] font-bold text-muted-foreground font-sans uppercase">kg</span>
-                            </>
-                          ) : (
-                            <span className="text-xl font-bold text-muted-foreground font-sans">Bodyweight</span>
-                          )}
-                        </p>
-                      </div>
-
-                      <div className="h-10 w-px bg-border/80" />
-
-                      <div className="space-y-0.5">
-                        <span className="text-[9px] uppercase font-black text-muted-foreground/60 tracking-widest font-mono">Routine Sets</span>
-                        <p className="text-3xl font-black text-foreground font-mono mt-0.5 leading-none tracking-tight">
-                          {ex.targetSets}{' '}
-                          <span className="text-[11px] font-bold text-muted-foreground font-sans uppercase">sets</span>
-                        </p>
-                      </div>
-
-                      <div className="h-10 w-px bg-border/80" />
-
-                      <div className="space-y-0.5">
-                        <span className="text-[9px] uppercase font-black text-muted-foreground/60 tracking-widest font-mono">Target Reps</span>
-                        <p className="text-3xl font-black text-foreground font-mono mt-0.5 leading-none tracking-tight">
-                          {rec.reps}{' '}
-                          <span className="text-[11px] font-bold text-muted-foreground font-sans uppercase">reps</span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Confidence Bar */}
-                  {rec.fromBackend && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] uppercase font-black text-muted-foreground/50 tracking-widest font-mono">
-                          Engine Confidence
-                        </span>
-                        <span className="text-[9px] font-black font-mono text-muted-foreground/70">
-                          {sessionsUsed}/{12} sessions · {confidencePct}%
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full rounded-full bg-secondary/80 overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${confidencePct}%` }}
-                          transition={{ duration: 0.6, delay: index * 0.05 + 0.2, ease: 'easeOut' }}
-                          className={`h-full rounded-full ${
-                            confidencePct >= 80 ? 'bg-accent-green' :
-                            confidencePct >= 40 ? 'bg-accent-blue' :
-                            'bg-accent-orange'
-                          }`}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Audit Trail / Reasoning Sidebar (right/bottom) */}
-                <div className="p-6 md:w-[32%] bg-secondary/25 flex flex-col justify-center relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-accent-blue/5 rounded-full blur-xl pointer-events-none" />
-
-                  <div className="flex items-center gap-1.5 mb-2 select-none">
-                    <Sparkles className="w-3.5 h-3.5 text-accent-blue shrink-0" />
-                    <span className="text-[9px] uppercase font-black text-accent-blue tracking-widest font-mono">
-                      {rec.fromBackend ? 'Audit Trail' : 'AI Suggestion'}
-                    </span>
-                  </div>
-
-                  {recLoading && !rec.fromBackend ? (
-                    <div className="flex items-center gap-2 text-muted-foreground/60">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span className="text-[11px] font-semibold">Analysing sessions…</span>
-                    </div>
-                  ) : (
-                    <p className="text-[12px] font-semibold leading-relaxed text-muted-foreground/90 italic relative z-10">
-                      &ldquo;{rec.reason}&rdquo;
-                    </p>
-                  )}
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {/* Action Log split */}
-        {currentSplitExercises.length > 0 && (
-          <div className="pt-4 px-1">
-            <button
-              onClick={() => handleLogWorkout(activeSplit, currentSplitExercises)}
-              className="w-full py-4.5 bg-accent-blue hover:bg-accent-blue/90 text-white font-extrabold tracking-tight rounded-2xl shadow-lg shadow-accent-blue/10 hover:shadow-accent-blue/20 transition-all duration-300 text-sm tracking-wide text-center flex items-center justify-center gap-2 btn-tap-scale"
-            >
-              <Plus className="w-4 h-4 stroke-[3.5] text-white" />
-              Log {activeSplit} Workout
-            </button>
-          </div>
-        )}
-      </motion.div>
-    );
-  }
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-8 pt-2 pb-24"
+      className="space-y-10 pt-2 pb-36 md:pb-12"
     >
-      <header className="flex items-end justify-between px-1">
-        <div className="space-y-1">
-          <h2 className="text-4xl font-extrabold tracking-tight text-foreground font-heading">Analytics</h2>
-          <p className="text-muted-foreground text-sm font-medium">Your performance at a glance</p>
+      <header className="flex items-end justify-between gap-4 px-1">
+        <div className="space-y-1.5">
+          <h1 className="display-title text-[1.75rem] md:text-[2.25rem]">
+            <span className="gradient-text">Analytics</span>
+          </h1>
+          <p className="body-copy text-sm">Progress, load, and what to train next.</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setActiveSection('recommendations')}
-            className="flex items-center gap-1.5 px-4.5 py-2.5 bg-accent-blue-bg text-accent-blue border border-accent-blue/20 rounded-full hover:bg-accent-blue-bg/85 transition-all duration-250 shadow-[0_4px_12px_rgba(0,0,0,0.03)] btn-tap-scale text-xs font-extrabold font-heading"
-            title="Recommended Workouts"
-          >
-            <Sparkles className="w-3.5 h-3.5 fill-accent-blue/10" />
-            Routines
-          </button>
+        <div className="flex shrink-0 gap-2">
           <button
             onClick={() => (window as any).setActiveView?.('ai-insights')}
-            className="flex items-center gap-1.5 px-4.5 py-2.5 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-all duration-250 shadow-[0_4px_14px_rgba(0,0,0,0.1)] btn-tap-scale text-xs font-bold font-heading"
+            className="btn-tap-scale flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2.5 text-xs font-semibold text-background transition-opacity hover:opacity-90"
             title="AI Insights"
           >
             Insights
-            <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+            <ArrowRight className="h-4 w-4 stroke-[2.5]" />
           </button>
         </div>
       </header>
@@ -698,7 +523,6 @@ export const Analytics: React.FC = () => {
                               <button
                                 key={ex.name}
                                 onClick={() => {
-                                  // Find current stats
                                   setSelectedExercise(ex);
                                   setIsDropdownOpen(false);
                                   setSearchQuery('');
@@ -787,9 +611,34 @@ export const Analytics: React.FC = () => {
                 </div>
                 <span className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-widest font-heading">Strength Progression</span>
               </div>
-              <span className="ios-badge bg-secondary text-muted-foreground font-mono uppercase text-[9px] font-bold">
-                Chronological • {selectedExercise.unit}
-              </span>
+              {selectedExercise.unit === "kg" ? (
+                <div className="flex bg-secondary p-0.5 rounded-lg border border-border">
+                  <button
+                    onClick={() => setShowEst1RM(true)}
+                    className={`px-2 py-1 text-[9px] font-bold font-heading rounded-md transition-all ${
+                      showEst1RM
+                        ? 'bg-card text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Est. 1RM
+                  </button>
+                  <button
+                    onClick={() => setShowEst1RM(false)}
+                    className={`px-2 py-1 text-[9px] font-bold font-heading rounded-md transition-all ${
+                      !showEst1RM
+                        ? 'bg-card text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Max Weight
+                  </button>
+                </div>
+              ) : (
+                <span className="ios-badge bg-secondary text-muted-foreground font-mono uppercase text-[9px] font-bold">
+                  Chronological • {selectedExercise.unit}
+                </span>
+              )}
             </div>
 
             <div className="h-[250px] w-full pr-2">
@@ -827,25 +676,25 @@ export const Analytics: React.FC = () => {
                       }}
                       labelFormatter={(str) => `Date: ${new Date(str).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}`}
                     />
-                    <Line
-                      type="monotone"
-                      dataKey="weight"
-                      stroke="hsl(var(--accent-blue))"
-                      strokeWidth={3}
-                      dot={{ r: 4, stroke: 'hsl(var(--accent-blue))', strokeWidth: 2, fill: 'hsl(var(--card))' }}
-                      activeDot={{ r: 6, stroke: 'hsl(var(--accent-blue))', strokeWidth: 2, fill: 'hsl(var(--accent-blue))' }}
-                      name="Max Weight"
-                    />
-                    {selectedExercise.unit === "kg" && (
+                    {selectedExercise.unit === "kg" && showEst1RM ? (
                       <Line
                         type="monotone"
                         dataKey="est_1rm"
                         stroke="hsl(var(--accent-violet))"
-                        strokeWidth={2}
-                        strokeDasharray="4 4"
-                        dot={{ r: 3, stroke: 'hsl(var(--accent-violet))', strokeWidth: 1, fill: 'hsl(var(--card))' }}
-                        activeDot={{ r: 5 }}
+                        strokeWidth={3}
+                        dot={{ r: 4, stroke: 'hsl(var(--accent-violet))', strokeWidth: 2, fill: 'hsl(var(--card))' }}
+                        activeDot={{ r: 6, stroke: 'hsl(var(--accent-violet))', strokeWidth: 2, fill: 'hsl(var(--accent-violet))' }}
                         name="Est. 1RM"
+                      />
+                    ) : (
+                      <Line
+                        type="monotone"
+                        dataKey="weight"
+                        stroke="hsl(var(--accent-blue))"
+                        strokeWidth={3}
+                        dot={{ r: 4, stroke: 'hsl(var(--accent-blue))', strokeWidth: 2, fill: 'hsl(var(--card))' }}
+                        activeDot={{ r: 6, stroke: 'hsl(var(--accent-blue))', strokeWidth: 2, fill: 'hsl(var(--accent-blue))' }}
+                        name="Max Weight"
                       />
                     )}
                   </LineChart>
@@ -860,12 +709,8 @@ export const Analytics: React.FC = () => {
             {selectedExercise.unit === "kg" && (
               <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-semibold justify-center pt-2 border-t border-border/40">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 bg-accent-blue inline-block rounded-full" />
-                  <span>Max Weight</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 bg-accent-violet border-dashed border-t-2 inline-block" />
-                  <span>Est. 1-Rep Max (1RM)</span>
+                  <span className={`w-3 h-0.5 inline-block rounded-full ${showEst1RM ? 'bg-accent-violet' : 'bg-accent-blue'}`} />
+                  <span>{showEst1RM ? 'Estimated 1-Rep Max (e1RM)' : 'Max Weight'}</span>
                 </div>
               </div>
             )}
@@ -879,137 +724,327 @@ export const Analytics: React.FC = () => {
           </button>
         </motion.div>
       ) : (
-        /* General Overview Dashboard */
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-8"
-        >
-          {/* Recommended routines banner */}
+        /* Dashboard View (Today's Insight vs Macro Trends) */
+        <div className="space-y-6">
+          {/* Tab Selector */}
           <div className="px-1">
-            <button
-              onClick={() => setActiveSection('recommendations')}
-              className="w-full relative overflow-hidden bg-gradient-to-br from-accent-violet-bg via-accent-violet-bg/60 to-accent-blue-bg/40 border border-accent-violet/20 hover:border-accent-violet/30 rounded-[28px] p-6 text-left shadow-[0_8px_30px_rgba(0,0,0,0.02)] transition-all group btn-tap-scale"
+            <div className="flex bg-secondary/50 p-1 rounded-2xl border border-border">
+              <button
+                onClick={() => setDashboardTab('insight')}
+                className={`flex-1 py-2.5 text-xs font-black font-heading rounded-xl transition-all ${
+                  dashboardTab === 'insight'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Today's Insight
+              </button>
+              <button
+                onClick={() => setDashboardTab('trends')}
+                className={`flex-1 py-2.5 text-xs font-black font-heading rounded-xl transition-all ${
+                  dashboardTab === 'trends'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Macro Trends
+              </button>
+            </div>
+          </div>
+
+          {dashboardTab === 'insight' ? (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
             >
-              <div className="absolute top-0 right-0 w-44 h-44 bg-accent-violet/10 rounded-full blur-3xl -mr-10 -mt-10 group-hover:bg-accent-violet/15 transition-all" />
-              <div className="absolute bottom-0 right-12 w-32 h-32 bg-accent-blue/5 rounded-full blur-2xl -mr-6 -mb-6" />
-              
-              <div className="flex items-start justify-between">
-                <div className="space-y-2 max-w-[70%]">
-                  <span className="ios-badge bg-accent-violet/15 text-accent-violet mb-1.5 inline-block">
-                    AI Recommended Splits
-                  </span>
-                  <h3 className="text-xl font-extrabold text-foreground font-heading tracking-tight leading-tight">
-                    Ready for your next session?
-                  </h3>
-                  <p className="text-muted-foreground text-xs font-semibold leading-relaxed mt-1">
-                    View personalized workout recommendations for Push, Pull, Legs, Upper, and Lower splits computed using progressive overload.
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-accent-violet text-accent-violet-bg rounded-2xl flex items-center justify-center shadow-lg shadow-accent-violet/20 shrink-0 group-hover:scale-105 transition-transform">
-                  <Sparkles className="w-6 h-6 fill-accent-violet-bg/30" />
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-1 mt-5 text-[11px] font-black text-accent-violet uppercase tracking-wider font-heading">
-                View Recommendations
-                <ArrowRight className="w-3.5 h-3.5 stroke-[2.5] group-hover:translate-x-1 transition-transform" />
-              </div>
-            </button>
-          </div>
-
-          {/* Overview Cards */}
-          <div className="grid grid-cols-2 gap-4">
-            <StatCard
-              icon={<TrendingUp className="w-4 h-4" />}
-              label="Active Days"
-              value={data.total_workouts}
-              subtext={`${data.gym_session_count} Gym • ${data.strava_activity_count} Strava`}
-              accent="blue"
-            />
-            <StatCard
-              icon={<Calendar className="w-4 h-4" />}
-              label="This Week"
-              value={data.workouts_this_week}
-              subtext="Activities"
-              accent="violet"
-            />
-          </div>
-
-          {/* Focus Insights */}
-          <div className="ios-card bg-card border border-border p-6 space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-accent-orange-bg text-accent-orange shrink-0">
-                <Activity className="w-4 h-4" />
-              </div>
-              <span className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-widest font-heading">Focus Distribution</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-8 pt-1">
-              <div className="space-y-1">
-                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider font-mono">Most Trained</p>
-                <p className="text-2xl font-black text-foreground font-heading tracking-tight leading-tight">{data.most_trained}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider font-mono">Least Trained</p>
-                <p className="text-2xl font-black text-foreground font-heading tracking-tight leading-tight">{data.least_trained}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Volume Chart */}
-          <div className="ios-card bg-card p-6 border border-border space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-accent-green-bg text-accent-green shrink-0">
-                  <Dumbbell className="w-4 h-4" />
-                </div>
-                <span className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-widest font-heading">Volume by Muscle Group</span>
-              </div>
-              <span className="ios-badge bg-secondary text-muted-foreground font-mono">kg • ALL TIME</span>
-            </div>
-
-            <div className="h-[250px] w-full pr-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.volume_per_muscle} layout="vertical" margin={{ left: -20, right: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                  <XAxis type="number" hide />
-                  <YAxis
-                    dataKey="muscle"
-                    type="category"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fontWeight: 700, fill: 'hsl(var(--muted-foreground))', fontFamily: 'var(--font-heading)' }}
-                    width={80}
-                  />
-                  <Tooltip
-                    cursor={{ fill: 'hsl(var(--secondary) / 0.4)', radius: 6 }}
-                    contentStyle={{
-                      borderRadius: '16px',
-                      border: '1px solid hsl(var(--border))',
-                      background: 'hsl(var(--card))',
-                      boxShadow: '0 8px 30px rgba(0,0,0,0.06)',
-                      fontFamily: 'var(--font-sans)',
-                      fontSize: '12px'
-                    }}
-                    labelStyle={{ fontWeight: '800', fontFamily: 'var(--font-heading)', color: 'hsl(var(--foreground))' }}
-                    itemStyle={{ fontWeight: '600', color: 'hsl(var(--accent-blue))' }}
-                  />
-                  <Bar
-                    dataKey="volume"
-                    fill="hsl(var(--foreground))"
-                    radius={[0, 6, 6, 0]}
-                    barSize={18}
+              {/* Header info */}
+              <div className="space-y-1.5 px-1 font-heading">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-accent-blue fill-accent-blue/10" />
+                    <h3 className="text-lg font-black tracking-tight text-foreground">
+                      Today's Split: {activeSplit}
+                    </h3>
+                  </div>
+                  <select
+                    value={activeSplit}
+                    onChange={(e) => setActiveSplit(e.target.value as any)}
+                    className="text-xs font-bold text-accent-blue bg-transparent border-none outline-none cursor-pointer focus:ring-0 focus:outline-none"
                   >
-                    {data.volume_per_muscle.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </motion.div>
+                    <option value="Push">Push Split</option>
+                    <option value="Pull">Pull Split</option>
+                    <option value="Legs">Legs Split</option>
+                    <option value="Upper">Upper Split</option>
+                    <option value="Lower">Lower Split</option>
+                  </select>
+                </div>
+                <p className="text-muted-foreground text-xs font-semibold leading-relaxed">
+                  Based on your history, today is predicted to be a <span className="text-accent-blue">{activeSplit}</span> day.
+                </p>
+              </div>
+
+              {/* Exercises in current split */}
+              <div className="space-y-6 px-1">
+                {currentSplitExercises.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 px-6">
+                    <div className="p-4 rounded-2xl bg-secondary/60">
+                      <Dumbbell className="w-8 h-8 text-muted-foreground/30" />
+                    </div>
+                    <p className="text-sm font-bold text-muted-foreground font-heading">No {activeSplit} exercises logged yet</p>
+                    <p className="text-xs text-muted-foreground/60 max-w-[260px] leading-relaxed">Log a workout containing {activeSplit.toLowerCase()} exercises and they’ll appear here with personalised recommendations.</p>
+                  </div>
+                ) : currentSplitExercises.map((ex, index) => {
+                  const rec = getExerciseRecommendation(ex);
+
+                  const fatigueBadge: Record<string, { label: string; cls: string }> = {
+                    new:            { label: 'Calibrating',   cls: 'bg-accent-orange-bg text-accent-orange' },
+                    clear:          { label: 'Overload Ready', cls: 'bg-accent-green-bg text-accent-green' },
+                    overreaching:   { label: 'Scaled Load',   cls: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400' },
+                    severe_fatigue: { label: 'Deload',        cls: 'bg-red-500/10 text-red-500' },
+                  };
+                  const badge = fatigueBadge[rec.fatigue_state] ?? fatigueBadge['clear'];
+
+                  const confidencePct = Math.round((rec.confidence ?? 0) * 100);
+                  const sessionsUsed = rec.sessions_used ?? 0;
+                  const isExpanded = !!expandedAnalysis[ex.name];
+
+                  return (
+                    <motion.div
+                      key={ex.name}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      className="bg-card border border-border rounded-3xl overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.015)] hover:shadow-md transition-all duration-300 group flex flex-col btn-tap-scale"
+                    >
+                      {/* Main panel */}
+                      <div className="p-6 flex-1 flex flex-col justify-between space-y-6">
+                        {/* Category/Type Indicators */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="ios-badge bg-secondary text-muted-foreground uppercase text-[9px] py-0.5 tracking-wider">
+                              {ex.muscle}
+                            </span>
+                            <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest font-mono">
+                              {ex.type}
+                            </span>
+                            {ex.occurrence_count != null && (
+                              <span className="text-[9px] font-bold text-muted-foreground/40 font-mono">
+                                {ex.occurrence_count} sets
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                setExpandedAnalysis(prev => ({
+                                  ...prev,
+                                  [ex.name]: !prev[ex.name]
+                                }));
+                              }}
+                              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold font-heading border transition-all ${
+                                isExpanded
+                                  ? 'bg-accent-blue text-white border-accent-blue'
+                                  : 'bg-secondary hover:bg-secondary/80 text-muted-foreground border-border'
+                              }`}
+                            >
+                              <Sparkles className="w-3 h-3 shrink-0" />
+                              AI Analysis
+                            </button>
+                            <span className={`ios-badge uppercase text-[9.5px] font-black ${badge.cls}`}>
+                              {badge.label}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Title & Large Metric Display */}
+                        <div className="space-y-4">
+                          <h4 className="text-2xl font-black text-foreground font-heading tracking-tight leading-tight group-hover:text-accent-blue transition-colors">
+                            {ex.name}
+                          </h4>
+
+                          {/* Numeric target blocks */}
+                          <div className="flex items-end gap-8 pt-1">
+                            <div className="space-y-0.5">
+                              <span className="text-[9px] uppercase font-black text-muted-foreground/60 tracking-widest font-mono">Target Weight</span>
+                              <p className="text-3xl font-black text-foreground font-mono mt-0.5 leading-none tracking-tight">
+                                {rec.weight > 0 ? (
+                                  <>
+                                    {rec.weight}{' '}
+                                    <span className="text-[11px] font-bold text-muted-foreground font-sans uppercase">kg</span>
+                                  </>
+                                ) : (
+                                  <span className="text-xl font-bold text-muted-foreground font-sans">Bodyweight</span>
+                                )}
+                              </p>
+                            </div>
+
+                            <div className="h-10 w-px bg-border/80" />
+
+                            <div className="space-y-0.5">
+                              <span className="text-[9px] uppercase font-black text-muted-foreground/60 tracking-widest font-mono">Target Reps</span>
+                              <p className="text-3xl font-black text-foreground font-mono mt-0.5 leading-none tracking-tight">
+                                {rec.reps}{' '}
+                                <span className="text-[11px] font-bold text-muted-foreground font-sans uppercase">reps</span>
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Expanded details */}
+                      {isExpanded && (
+                        <div className="p-6 bg-secondary/25 border-t border-border/50 space-y-4">
+                          {rec.fromBackend && (
+                            <div className="flex items-center justify-between py-1 font-mono text-[10px]">
+                              <span className="text-muted-foreground/60 uppercase font-black tracking-widest">
+                                Engine Confidence
+                              </span>
+                              <span className="text-foreground font-black">
+                                {confidencePct}% ({sessionsUsed}/{12} sessions)
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="relative overflow-hidden pt-2 border-t border-border/40">
+                            <div className="flex items-center gap-1.5 mb-2 select-none">
+                              <Sparkles className="w-3.5 h-3.5 text-accent-blue shrink-0" />
+                              <span className="text-[9px] uppercase font-black text-accent-blue tracking-widest font-mono">
+                                {rec.fromBackend ? 'Audit Trail' : 'AI Suggestion'}
+                              </span>
+                            </div>
+
+                            {recLoading && !rec.fromBackend ? (
+                              <div className="flex items-center gap-2 text-muted-foreground/60">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <span className="text-[11px] font-semibold">Analysing sessions…</span>
+                              </div>
+                            ) : (
+                              <p className="text-[12px] font-semibold leading-relaxed text-muted-foreground/90 italic relative z-10">
+                                &ldquo;{rec.reason}&rdquo;
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              {currentSplitExercises.length > 0 && (
+                <div className="pt-4 px-1">
+                  <button
+                    onClick={() => handleLogWorkout(activeSplit, currentSplitExercises)}
+                    className="w-full py-4.5 bg-accent-blue hover:bg-accent-blue/90 text-white font-extrabold tracking-tight rounded-2xl shadow-lg shadow-accent-blue/10 hover:shadow-accent-blue/20 transition-all duration-300 text-sm tracking-wide text-center flex items-center justify-center gap-2 btn-tap-scale"
+                  >
+                    <Plus className="w-4 h-4 stroke-[3.5] text-white" />
+                    Log {activeSplit} Workout
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-8"
+            >
+              {/* Overview Cards */}
+              <div className="grid grid-cols-2 gap-4">
+                <StatCard
+                  icon={<TrendingUp className="w-4 h-4" />}
+                  label="Active Days"
+                  value={data.total_workouts}
+                  subtext={`${data.gym_session_count} Gym • ${data.strava_activity_count} Strava`}
+                  accent="blue"
+                />
+                <StatCard
+                  icon={<Calendar className="w-4 h-4" />}
+                  label="This Week"
+                  value={data.workouts_this_week}
+                  subtext="Activities"
+                  accent="violet"
+                />
+              </div>
+
+              {/* Focus Insights */}
+              <div className="ios-card bg-card border border-border p-6 space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-accent-orange-bg text-accent-orange shrink-0">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                  <span className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-widest font-heading">Focus Distribution</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-8 pt-1">
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider font-mono">Most Trained</p>
+                    <p className="text-2xl font-black text-foreground font-heading tracking-tight leading-tight">{data.most_trained}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider font-mono">Least Trained</p>
+                    <p className="text-2xl font-black text-foreground font-heading tracking-tight leading-tight">{data.least_trained}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Volume Chart */}
+              <div className="ios-card bg-card p-6 border border-border space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-xl bg-accent-green-bg text-accent-green shrink-0">
+                      <Dumbbell className="w-4 h-4" />
+                    </div>
+                    <span className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-widest font-heading">Volume by Muscle Group</span>
+                  </div>
+                  <span className="ios-badge bg-secondary text-muted-foreground font-mono">HARD SETS • ALL TIME</span>
+                </div>
+
+                <div className="h-[250px] w-full pr-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.volume_per_muscle} layout="vertical" margin={{ left: -20, right: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                      <XAxis type="number" hide />
+                      <YAxis
+                        dataKey="muscle"
+                        type="category"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 10, fontWeight: 700, fill: 'hsl(var(--muted-foreground))', fontFamily: 'var(--font-heading)' }}
+                        width={80}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'hsl(var(--secondary) / 0.4)', radius: 6 }}
+                        contentStyle={{
+                          borderRadius: '16px',
+                          border: '1px solid hsl(var(--border))',
+                          background: 'hsl(var(--card))',
+                          boxShadow: '0 8px 30px rgba(0,0,0,0.06)',
+                          fontFamily: 'var(--font-sans)',
+                          fontSize: '12px'
+                        }}
+                        labelStyle={{ fontWeight: '800', fontFamily: 'var(--font-heading)', color: 'hsl(var(--foreground))' }}
+                        itemStyle={{ fontWeight: '600', color: 'hsl(var(--accent-blue))' }}
+                      />
+                      <Bar
+                        dataKey="volume"
+                        fill="hsl(var(--foreground))"
+                        radius={[0, 6, 6, 0]}
+                        barSize={18}
+                      >
+                        {data.volume_per_muscle.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </div>
       )}
     </motion.div>
   );

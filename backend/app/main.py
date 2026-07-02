@@ -1,4 +1,5 @@
 import os
+import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +22,13 @@ from .modules.history.router import router as history_router
 from .modules.strava.router import router as strava_router
 from .modules.strava.service import sync_strava_data
 from .modules.analytics.router import router as analytics_router
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+MCP_DIR = os.path.join(BASE_DIR, "mcp")
+if MCP_DIR not in sys.path:
+    sys.path.append(MCP_DIR)
+
+from repcount_mcp.server import mcp as repcount_mcp
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,7 +63,6 @@ app.add_middleware(
 
 # Serve static files from the frontend/dist directory
 # This assumes the file is in backend/app/main.py and we want to reach frontend/dist
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 frontend_dist_path = os.path.join(BASE_DIR, "frontend", "dist")
 
 print(f"📂 Serving frontend from: {frontend_dist_path}")
@@ -66,12 +73,13 @@ app.include_router(health_router, prefix="/api", tags=["Health"])
 app.include_router(history_router, prefix="/api", tags=["History"])
 app.include_router(strava_router, prefix="/api", tags=["Strava"])
 app.include_router(analytics_router, prefix="/api", tags=["Analytics"])
+app.mount("/mcp", repcount_mcp.streamable_http_app())
 
 # Catch-all route to serve the frontend (SPA routing and static files)
 @app.get("/{rest_of_path:path}")
 async def serve_frontend(rest_of_path: str):
     # If the path looks like an API call but wasn't caught by the routers above, return 404
-    if rest_of_path.startswith("api/"):
+    if rest_of_path.startswith("api/") or rest_of_path.startswith("mcp/") or rest_of_path == "mcp":
         return JSONResponse(status_code=404, content={"detail": f"API endpoint '{rest_of_path}' not found"})
     
     # 1. Check if the requested path corresponds to a real file in the dist directory
@@ -92,6 +100,7 @@ async def serve_frontend(rest_of_path: str):
         content={
             "message": "GymTracker AI API is running, but the frontend has not been built yet or the requested file was not found.",
             "health_check": "/api/health",
+            "mcp_endpoint": "/mcp",
             "docs": "/docs",
             "path_attempted": rest_of_path
         }

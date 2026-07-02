@@ -2,7 +2,9 @@ import React from 'react';
 import { ChevronDown, User, Bell, Moon, Sun } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ActivityCalendar, DayActivity, ActivityType } from '@/components/ui/ActivityCalendar';
+import { MonthlySummary } from '@/components/history/MonthlySummary';
 import { useWorkoutStore } from '@/lib/workout-store';
+import { computeMonthlySummary } from '@/lib/history-utils';
 import { WorkoutSession } from '@/lib/types';
 import type { Theme } from '@/hooks/use-theme';
 
@@ -13,6 +15,7 @@ interface ProfileProps {
 
 export const Profile: React.FC<ProfileProps> = ({ theme, setTheme }) => {
   const { sessions } = useWorkoutStore();
+  const monthlySummary = React.useMemo(() => computeMonthlySummary(sessions), [sessions]);
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
@@ -106,6 +109,14 @@ export const Profile: React.FC<ProfileProps> = ({ theme, setTheme }) => {
           </span>
         </div>
       </header>
+
+      {/* Monthly Glance Section */}
+      {sessions.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="px-2 text-[11px] font-bold text-muted-foreground uppercase tracking-[0.1em] font-mono">This Month</h3>
+          <MonthlySummary summary={monthlySummary} />
+        </div>
+      )}
 
       {/* Activity Calendar Section */}
       <div className="space-y-4">

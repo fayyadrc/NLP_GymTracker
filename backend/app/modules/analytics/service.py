@@ -50,7 +50,6 @@ class AnalyticsService:
         workouts_this_week = len(week_activity_dates)
 
         # 4. Volume per Muscle Group & Detailed Exercise Analytics
-        volume_by_muscle = defaultdict(float)
         exercise_stats = {}
 
         def calc_1rm(w: float, r: int) -> float:
@@ -59,6 +58,28 @@ class AnalyticsService:
             if r == 1:
                 return w
             return round(w * (1 + r / 30.0), 1)
+
+        # Pass 1: Find the maximum e1RM achieved per exercise per session date
+        max_e1rm_per_session = defaultdict(float)
+        for log in gym_data:
+            exercise_raw = log.get("exercise") or log.get("exercise_name")
+            if not exercise_raw or exercise_raw.lower() == "unknown":
+                continue
+            exercise = normalize_exercise_name(exercise_raw)
+            ex_key = exercise.lower()
+            
+            weight = float(log.get("weight") or 0)
+            reps = int(log.get("reps") or 0)
+            log_date = log.get("date")
+            if log_date:
+                norm_date = str(log_date).split("T")[0]
+                e1rm = calc_1rm(weight, reps)
+                session_key = (ex_key, norm_date)
+                if e1rm > max_e1rm_per_session[session_key]:
+                    max_e1rm_per_session[session_key] = e1rm
+
+        # Pass 2: Count "Hard Sets" (>= 70% of session max e1RM) per muscle group
+        hard_sets_by_muscle = defaultdict(int)
 
         for log in gym_data:
             exercise_raw = log.get("exercise") or log.get("exercise_name")
@@ -72,9 +93,6 @@ class AnalyticsService:
             unit = log.get("weight_unit") or log.get("unit") or "kg"
             log_date = log.get("date")
 
-            # 1 row in the db = 1 set
-            volume_by_muscle[muscle] += weight * reps
-
             ex_name = exercise
             ex_key = ex_name.lower()
             
@@ -85,6 +103,17 @@ class AnalyticsService:
 
             est_1rm = calc_1rm(weight, reps) if norm_unit == "kg" else 0.0
 
+            # Determine if this set is a "Hard Set"
+            is_hard_set = False
+            if log_date:
+                norm_date = str(log_date).split("T")[0]
+                max_session_e1rm = max_e1rm_per_session[(ex_key, norm_date)]
+                if max_session_e1rm > 0 and est_1rm >= 0.7 * max_session_e1rm:
+                    is_hard_set = True
+
+            if is_hard_set:
+                hard_sets_by_muscle[muscle] += 1
+
             if ex_key not in exercise_stats:
                 exercise_stats[ex_key] = {
                     "name": ex_name.title(),
@@ -93,6 +122,7 @@ class AnalyticsService:
                     "total_sets": 0,
                     "total_reps": 0,
                     "total_volume": 0.0,
+                    "total_hard_sets": 0,
                     "history_by_date": {}
                 }
 
@@ -100,6 +130,8 @@ class AnalyticsService:
             stats["total_sets"] += 1
             stats["total_reps"] += reps
             stats["total_volume"] += weight * reps
+            if is_hard_set:
+                stats["total_hard_sets"] += 1
 
             if weight > stats["max_weight"]:
                 stats["max_weight"] = weight
@@ -126,10 +158,10 @@ class AnalyticsService:
                         day_history["est_1rm"] = max(day_history["est_1rm"], est_1rm)
                     day_history["volume"] += volume
 
-        # Format volume data for chart
+        # Format volume data for chart (now representing Hard Sets count per muscle)
         volume_data = [
-            {"muscle": m, "volume": round(v, 1)} 
-            for m, v in sorted(volume_by_muscle.items(), key=lambda x: x[1], reverse=True)
+            {"muscle": m, "volume": v} 
+            for m, v in sorted(hard_sets_by_muscle.items(), key=lambda x: x[1], reverse=True)
         ]
 
         # 5. Most / Least Trained

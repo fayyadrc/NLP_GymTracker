@@ -6,7 +6,6 @@ import {
   PencilLine,
   History as HistoryIcon,
   User,
-  Settings,
   BarChart2,
 } from 'lucide-react';
 import { ViewState } from '@/lib/types';
@@ -18,10 +17,10 @@ interface FloatingNavBarProps {
 }
 
 const NAV_ITEMS = [
-  { id: 'quick-log', icon: PencilLine, label: 'New Session' },
-  { id: 'history', icon: HistoryIcon, label: 'History' },
-  { id: 'analytics', icon: BarChart2, label: 'Analytics' },
-  { id: 'profile', icon: User, label: 'Profile' },
+  { id: 'quick-log', icon: PencilLine, label: 'Log', primary: true },
+  { id: 'history', icon: HistoryIcon, label: 'History', primary: false },
+  { id: 'analytics', icon: BarChart2, label: 'Stats', primary: false },
+  { id: 'profile', icon: User, label: 'Profile', primary: false },
 ] as const;
 
 export const FloatingNavBar: React.FC<FloatingNavBarProps> = ({
@@ -34,46 +33,51 @@ export const FloatingNavBar: React.FC<FloatingNavBarProps> = ({
   const handleTap = (id: string) => {
     setTappedId(id);
     setActiveView(id as ViewState);
-    setTimeout(() => setTappedId(null), 200);
+    window.setTimeout(() => setTappedId(null), 200);
   };
 
   return (
-    <nav className="md:hidden fixed bottom-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
-      <div
-        className="pointer-events-auto flex items-center justify-around px-3 py-1.5 glass-nav w-[calc(100%-32px)] max-w-[380px] h-[64px] rounded-[32px]"
-      >
+    <nav className="pointer-events-none fixed bottom-5 left-0 right-0 z-50 flex justify-center md:hidden">
+      <div className="glass-nav pointer-events-auto flex h-[3.75rem] w-auto min-w-[20rem] items-center justify-around rounded-[2rem] px-2">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const isActive = activeView === item.id || 
-                           (item.id === 'history' && activeView === 'workout-details');
+          const isActive =
+            activeView === item.id ||
+            (item.id === 'history' && activeView === 'workout-details');
+          const isTapped = tappedId === item.id;
+          const isLog = item.primary;
 
           return (
             <button
               key={item.id}
               onClick={() => handleTap(item.id)}
               className={cn(
-                "flex flex-col items-center justify-center gap-1 py-1 rounded-[20px] transition-all duration-300 relative min-w-[68px] btn-tap-scale",
-                isActive ? "bg-secondary/80 text-foreground font-semibold" : "bg-transparent text-muted-foreground"
+                'btn-tap-scale relative flex flex-col items-center justify-center gap-1 rounded-2xl py-1.5 transition-all duration-200 min-w-[4rem]',
+                isActive ? 'text-accent-signal' : 'text-muted-foreground',
               )}
             >
-              <Icon
-                className={cn(
-                  "w-[20px] h-[20px] transition-colors duration-200",
-                  isActive ? "text-foreground" : "text-muted-foreground"
-                )}
-                strokeWidth={isActive ? 2.5 : 2}
-              />
               <span
                 className={cn(
-                  "text-[9px] font-bold tracking-wider transition-colors duration-200 uppercase font-mono",
-                  isActive ? "text-foreground" : "text-muted-foreground"
+                  'flex items-center justify-center rounded-2xl transition-all duration-200 h-8 w-8',
+                  isTapped && 'scale-90',
                 )}
               >
-                {item.label.split(' ')[0]} {/* Shorten labels if necessary */}
+                <Icon
+                  className="h-[1.25rem] w-[1.25rem]"
+                  strokeWidth={isActive ? 2.5 : 2}
+                />
               </span>
-              
+              <span
+                className={cn(
+                  'text-[0.625rem] font-medium tracking-wide',
+                  isActive && 'font-semibold',
+                )}
+              >
+                {item.label}
+              </span>
+
               {item.id === 'profile' && anomalyCount > 0 && (
-                <span className="absolute top-1.5 right-4 w-1.5 h-1.5 rounded-full bg-destructive border border-background" />
+                <span className="absolute right-3 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" />
               )}
             </button>
           );

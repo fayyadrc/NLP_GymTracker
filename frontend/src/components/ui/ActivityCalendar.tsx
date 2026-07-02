@@ -96,26 +96,10 @@ export const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
 
   const getActivityColors = (type: ActivityType) => {
     switch (type) {
-      case 'run': 
-        return 'bg-accent-orange-bg text-accent-orange border-accent-orange/20';
-      case 'cycle': 
-        return 'bg-accent-violet-bg text-accent-violet border-accent-violet/20';
       case 'strength': 
-        return 'bg-accent-blue-bg text-accent-blue border-accent-blue/20';
-      case 'walk': 
-        return 'bg-secondary/70 text-muted-foreground border-border';
-      case 'swim': 
-        return 'bg-accent-blue-bg text-accent-blue border-accent-blue/20';
-      case 'hike': 
-        return 'bg-accent-orange-bg text-accent-orange border-accent-orange/20';
-      case 'yoga': 
-        return 'bg-accent-violet-bg text-accent-violet border-accent-violet/20';
-      case 'hiit': 
-        return 'bg-accent-green-bg text-accent-green border-accent-green/20';
-      case 'cardio': 
-        return 'bg-accent-green-bg text-accent-green border-accent-green/20';
+        return 'bg-accent-blue text-white border-accent-blue shadow-sm';
       default: 
-        return 'bg-secondary text-foreground border-border';
+        return 'bg-accent-green text-white border-accent-green shadow-sm';
     }
   };
 

@@ -130,9 +130,6 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
   const syncStrava = useCallback(async () => {
     try {
       await api.syncStravaData();
-      // Since it's a background task in the backend, we might want to wait a bit
-      // or just refresh immediately. Let's refresh immediately and maybe the user 
-      // can refresh again if it's not done.
       await refreshSessions();
     } catch (error) {
       dispatch({ type: 'FETCH_ERROR', payload: 'Failed to sync with Strava.' });

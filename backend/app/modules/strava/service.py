@@ -147,6 +147,7 @@ def sync_strava_data():
         
     except Exception as e:
         print(f"❌ Error during Strava sync: {e}")
+        raise e
 
 if __name__ == "__main__":
     sync_strava_data()
