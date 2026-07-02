@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, Component, type ErrorInfo, type ReactNode } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Shell } from '@/components/layout/Shell';
 import { QuickLog } from '@/components/views/QuickLog';
 import { NextSession } from '@/components/views/NextSession';
@@ -10,6 +11,7 @@ import { History } from '@/components/views/History';
 import { WorkoutDetails } from '@/components/views/WorkoutDetails';
 import { Analytics } from '@/components/views/Analytics';
 import { AIInsights } from '@/components/views/AI_Insights';
+import { LandingPage } from '@/components/landing/LandingPage';
 import { ViewState } from '@/lib/types';
 import { Toaster } from '@/components/ui/toaster';
 import { AnimatePresence } from 'framer-motion';
@@ -74,14 +76,10 @@ function AppContent() {
   const { sessions } = useWorkoutStore();
   const { theme, setTheme } = useTheme();
 
-  // Expose setActiveView globally for simple navigation from nested components
   React.useEffect(() => {
     (window as any).setActiveView = setActiveView;
   }, [setActiveView]);
 
-  // Derive anomaly count from sessions:
-  // For now, track how many sessions have potential issues (non-empty store = realistic scan needed)
-  // This will be dynamically updated when DataHealth actually scans data
   const [anomalyCount, setAnomalyCount] = useState(0);
 
   const renderView = () => {
@@ -128,12 +126,24 @@ function AppContent() {
   );
 }
 
-// ─── Root Page ───
-
-export default function Home() {
+function AppShell() {
   return (
     <WorkoutProvider>
       <AppContent />
     </WorkoutProvider>
+  );
+}
+
+// ─── Root Page ───
+
+export default function Home() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/app" element={<AppShell />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

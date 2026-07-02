@@ -27,7 +27,8 @@ export const NotesInput: React.FC<NotesInputProps> = ({
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = 'auto';
-    textarea.style.height = `${Math.max(500, textarea.scrollHeight)}px`;
+    const minH = window.innerWidth < 768 ? 280 : 500;
+    textarea.style.height = `${Math.max(minH, textarea.scrollHeight)}px`;
   }, []);
 
   useEffect(() => {
@@ -46,7 +47,7 @@ export const NotesInput: React.FC<NotesInputProps> = ({
   return (
     <div className="flex flex-col w-full h-full bg-transparent">
       {/* Writing Surface */}
-      <div className="flex-1 px-8 pt-8 overflow-y-auto relative">
+      <div className="flex-1 px-6 pt-6 overflow-y-auto relative md:px-8 md:pt-8">
         <textarea
           ref={textareaRef}
           value={value}
@@ -54,16 +55,14 @@ export const NotesInput: React.FC<NotesInputProps> = ({
           onKeyDown={handleKeyDown}
           disabled={disabled || isSubmitting}
           placeholder={placeholder}
+          aria-label="Workout log input"
           className={cn(
             "w-full bg-transparent border-none outline-none resize-none",
-            "text-[19px] leading-[1.5] text-foreground",
+            "text-[17px] md:text-[19px] leading-[1.5] text-foreground",
             "placeholder:text-muted-foreground placeholder:text-[14px]",
             "disabled:opacity-50 disabled:cursor-not-allowed",
           )}
-          style={{
-            minHeight: '300px',
-            fontFamily: 'var(--font-body)',
-          }}
+          style={{ minHeight: '240px' }}
           autoFocus
         />
       </div>

@@ -16,8 +16,10 @@ Pipeline (per exercise):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import List, Optional
+from ...db.supabase import supabase
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -197,6 +199,8 @@ def get_absolute_increment(category: ExerciseCategory) -> float:
 def apply_fatigue_penalty(
     full_increment: float,
     drop_pct: float,
+    threshold_overreaching: float = THRESHOLD_OVERREACHING,
+    threshold_severe_fatigue: float = THRESHOLD_SEVERE_FATIGUE,
 ) -> tuple[float, FatigueState, str]:
     """
     Scale the load increment based on how far the latest e1RM has dropped
@@ -205,29 +209,29 @@ def apply_fatigue_penalty(
     Returns:
         (scaled_increment, fatigue_state, audit_note)
     """
-    if drop_pct < THRESHOLD_OVERREACHING:
-        # 0–14% drop → clear to progress
+    if drop_pct < threshold_overreaching:
+        # Clear to progress
         return (
             full_increment,
             FatigueState.CLEAR,
-            f"Performance within normal range ({drop_pct * 100:.1f}% below baseline). "
+            f"Performance within normal range ({drop_pct * 100:.1f}% below baseline, threshold: {threshold_overreaching * 100:.1f}%). "
             f"Full +{full_increment}kg increment applied.",
         )
-    elif drop_pct < THRESHOLD_SEVERE_FATIGUE:
-        # 15–29% drop → functional overreaching
+    elif drop_pct < threshold_severe_fatigue:
+        # Functional overreaching
         scaled = round(full_increment * 0.5, 2)
         return (
             scaled,
             FatigueState.OVERREACHING,
-            f"Functional overreaching detected ({drop_pct * 100:.1f}% below EWMA baseline). "
+            f"Functional overreaching detected ({drop_pct * 100:.1f}% below EWMA baseline, threshold: {threshold_overreaching * 100:.1f}%). "
             f"Increment halved to +{scaled}kg to allow continued adaptation without burnout.",
         )
     else:
-        # ≥30% drop → severe fatigue
+        # Severe fatigue
         return (
             0.0,
             FatigueState.SEVERE_FATIGUE,
-            f"Severe fatigue signal ({drop_pct * 100:.1f}% below EWMA baseline). "
+            f"Severe fatigue signal ({drop_pct * 100:.1f}% below EWMA baseline, threshold: {threshold_severe_fatigue * 100:.1f}%). "
             f"Progression halted. Hold current weight or consider a structured deload week.",
         )
 
@@ -241,6 +245,53 @@ def calc_confidence(sessions: int) -> float:
     Reaches 100% at 12 sessions.
     """
     return round(min(1.0, sessions / CONFIDENCE_SESSIONS), 4)
+
+
+# ─── External Recovery Integration ───────────────────────────────────────────
+
+def get_cardio_fatigue_multiplier() -> tuple[float, float]:
+    """
+    Calculate the day's cardiovascular load from Strava activities in the last 3 days
+    and return (cardio_load, multiplier) where the multiplier adjusts fatigue thresholds.
+    """
+    cardio_load = 0.0
+    multiplier = 1.0
+    
+    if not supabase:
+        return cardio_load, multiplier
+
+    try:
+        # Fetch Strava activities logged in the last 3 days (relative to current UTC time)
+        three_days_ago = (datetime.utcnow() - timedelta(days=3)).isoformat()
+        response = supabase.table("strava_activities").select(
+            "duration_seconds, avg_heartrate, calories"
+        ).gte("start_date", three_days_ago).execute()
+        
+        activities = response.data or []
+        for act in activities:
+            duration = float(act.get("duration_seconds") or 0)
+            avg_hr = float(act.get("avg_heartrate") or 0)
+            calories = float(act.get("calories") or 0)
+            
+            # Estimate activity load
+            if avg_hr > 0:
+                # Heart-rate informed TRIMP proxy
+                act_load = (duration / 60.0) * (avg_hr / 100.0)
+            elif calories > 0:
+                act_load = calories / 10.0
+            else:
+                act_load = duration / 60.0
+                
+            cardio_load += act_load
+            
+        # A cumulative load of 150+ in 3 days triggers threshold adjustment.
+        # Decreases fatigue thresholds by up to 33% (from multiplier 1.0 down to 0.67).
+        multiplier = max(0.67, 1.0 - (cardio_load / 450.0))
+        
+    except Exception as e:
+        print(f"[recommendation_service] Strava load query error: {e}")
+        
+    return round(cardio_load, 2), round(multiplier, 2)
 
 
 # ─── Main Recommendation Generator ───────────────────────────────────────────
@@ -292,10 +343,12 @@ def generate_recommendation(
         )
 
     # ── Filter to kg-unit sessions only (can't do e1RM on plates) ───────────
-    valid = [
-        s for s in history
-        if float(s.get("weight") or 0) > 0 and int(s.get("reps") or 0) > 0
-    ]
+    valid = []
+    for s in history:
+        weight_val = float(s.get("weight") or 0)
+        reps_val = int(s.get("reps") or 0)
+        if weight_val > 0 and reps_val > 0:
+            valid.append(s)
 
     if not valid:
         audit = (
@@ -316,20 +369,36 @@ def generate_recommendation(
             category=category.value,
         )
 
-    # ── Build e1RM time-series ───────────────────────────────────────────────
-    e1rm_series = [
-        calc_e1rm(float(s["weight"]), int(s["reps"]))
-        for s in valid
-    ]
+    # ── Session Date Aggregation to extract "Top Set" (yielding highest e1RM) ──
+    # Prevents "last set bias" from cooldown/back-off sets
+    sessions_by_date = {}
+    for s in valid:
+        date_str = str(s.get("date") or "").split("T")[0]
+        weight_val = float(s["weight"])
+        reps_val = int(s["reps"])
+        e1rm_val = calc_e1rm(weight_val, reps_val)
+        
+        if date_str not in sessions_by_date or e1rm_val > sessions_by_date[date_str]["e1rm"]:
+            sessions_by_date[date_str] = {
+                "date": date_str,
+                "weight": weight_val,
+                "reps": reps_val,
+                "e1rm": e1rm_val
+            }
+            
+    sorted_sessions = sorted(sessions_by_date.values(), key=lambda x: x["date"])
 
-    latest_weight = float(valid[-1]["weight"])
-    latest_reps = int(valid[-1]["reps"])
+    # ── Build e1RM time-series (refactored to avoid list comprehensions for debuggability) ──
+    e1rm_series = []
+    for session in sorted_sessions:
+        e1rm_series.append(session["e1rm"])
+
+    latest_weight = float(sorted_sessions[-1]["weight"])
+    latest_reps = int(sorted_sessions[-1]["reps"])
     latest_e1rm = e1rm_series[-1]
-    sessions_used = len(valid)
+    sessions_used = len(sorted_sessions)
 
     # ── EWMA baseline (excluding the latest session) ─────────────────────────
-    # We compute EWMA over *all* sessions so the baseline is always informed.
-    # Then compare the latest point against that running average.
     ewma_baseline = calc_ewma(e1rm_series, alpha=EWMA_ALPHA)
 
     # ── Performance drop ─────────────────────────────────────────────────────
@@ -338,9 +407,14 @@ def generate_recommendation(
     else:
         drop_pct = 0.0
 
+    # ── Integrate External Recovery Metrics (Strava cardio load) ─────────────
+    cardio_load, cardio_multiplier = get_cardio_fatigue_multiplier()
+    adj_threshold_overreaching = THRESHOLD_OVERREACHING * cardio_multiplier
+    adj_threshold_severe_fatigue = THRESHOLD_SEVERE_FATIGUE * cardio_multiplier
+
     # ── Fatigue penalty ──────────────────────────────────────────────────────
     scaled_increment, fatigue_state, fatigue_note = apply_fatigue_penalty(
-        full_increment, drop_pct
+        full_increment, drop_pct, adj_threshold_overreaching, adj_threshold_severe_fatigue
     )
 
     # ── Final recommended weight ─────────────────────────────────────────────
@@ -358,14 +432,20 @@ def generate_recommendation(
 
     audit_parts = [
         f"Category: {category_label} → base increment {full_increment}kg.",
-        f"Last session: {latest_weight}kg × {latest_reps} reps "
-        f"(e1RM ≈ {latest_e1rm}kg).",
-        f"EWMA baseline: {ewma_baseline}kg (α={EWMA_ALPHA}, "
-        f"across {sessions_used} session{'s' if sessions_used != 1 else ''}).",
-        fatigue_note,
-        f"Recommended next session: {recommended_weight}kg "
-        f"(confidence: {int(confidence * 100)}%).",
+        f"Last session: {latest_weight}kg × {latest_reps} reps (Top Set e1RM ≈ {latest_e1rm}kg).",
+        f"EWMA baseline: {ewma_baseline}kg (α={EWMA_ALPHA}, across {sessions_used} session{'s' if sessions_used != 1 else ''}).",
     ]
+    
+    if cardio_load > 0:
+        audit_parts.append(
+            f"Cardio load: {cardio_load} (fatigue multiplier: {cardio_multiplier:.2f}). "
+            f"Thresholds: overreaching {adj_threshold_overreaching * 100:.1f}%, severe fatigue {adj_threshold_severe_fatigue * 100:.1f}%."
+        )
+        
+    audit_parts.append(fatigue_note)
+    audit_parts.append(
+        f"Recommended next session: {recommended_weight}kg (confidence: {int(confidence * 100)}%)."
+    )
     audit_trail = " ".join(audit_parts)
 
     return RecommendationResult(

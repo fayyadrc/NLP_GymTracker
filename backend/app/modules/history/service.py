@@ -5,13 +5,11 @@ from collections import defaultdict
 import uuid
 import httpx
 from .schemas import WorkoutSession, WorkoutEntry, StravaActivity, ParsedWorkoutLog
+from .date_utils import normalize_parsed_dates
 from ..analytics.muscle_mapping import get_muscle_info, normalize_exercise_name
 
-from dotenv import load_dotenv
+from ...core import dotenv_loader
 from datetime import date, timedelta
-
-# Load environment variables
-load_dotenv()
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
@@ -133,12 +131,24 @@ class HistoryService:
         return sessions
 
     @staticmethod
+    def _validate_parsed_workout_json(response: str) -> ParsedWorkoutLog:
+        """Drop incomplete LLM rows (e.g. missing reps) before schema validation."""
+        payload = json.loads(response)
+        entries = payload.get("entries", [])
+        complete_entries = [
+            entry for entry in entries
+            if isinstance(entry.get("reps"), int) and entry.get("reps") > 0
+        ]
+        return ParsedWorkoutLog.model_validate({"entries": complete_entries})
+
+    @staticmethod
     def parse_raw_workout(raw_text: str) -> ParsedWorkoutLog:
         """
         Takes raw string and uses Groq/OpenRouter to parse them into structured JSON
         """
-        current_today = date.today().isoformat()
-        current_yesterday = (date.today() - timedelta(days=1)).isoformat()
+        today = date.today()
+        current_today = today.isoformat()
+        current_yesterday = (today - timedelta(days=1)).isoformat()
         system_prompt = f"""
         You are a fitness workout data extraction agent.
         Your task is to convert raw, unstructured workout logs into structured data.
@@ -167,6 +177,7 @@ class HistoryService:
 
         ### Reps
         - Extract number of repetitions (must be an integer).
+        - Skip any set line that does not include a rep count (e.g. "80kgs for" with no number after "for").
 
         ### Effort / Intensity
         - "rir X" -> rir = X
@@ -174,10 +185,12 @@ class HistoryService:
 
         ### Date Handling
         - Normalize to ISO format: YYYY-MM-DD.
-        - The user will mention dates relative to today.
         - Today's date is: {current_today}
         - Yesterday's date is: {current_yesterday}
-        - Use today's date if no date is specified.
+        - If the user mentions a specific calendar date (e.g. "June 29", "29th of June", "on the 29th of june"), assign ALL sets from that workout block to that date.
+        - If the log contains multiple date headers (e.g. "18th May" then later "14th May"), assign each block of exercises to the nearest date header above it.
+        - Relative phrases like "yesterday" and "today" should resolve against today's date above.
+        - Use today's date only when no date is mentioned anywhere in the workout text.
 
         Return structured JSON ONLY in this format:
         {{
@@ -198,25 +211,30 @@ class HistoryService:
 
         user_prompt = f"Parse this workout log:\n{raw_text}"
 
+        parsed: ParsedWorkoutLog | None = None
+
         # 1. Try Groq
         if GROQ_API_KEY:
             try:
                 print("Attempting to parse with Groq...")
                 response = HistoryService._call_groq(system_prompt, user_prompt)
-                return ParsedWorkoutLog.model_validate_json(response)
+                parsed = HistoryService._validate_parsed_workout_json(response)
             except Exception as e:
                 print(f"Groq parsing failed: {e}")
 
         # 2. Try OpenRouter Fallback
-        if OPENROUTER_API_KEY:
+        if parsed is None and OPENROUTER_API_KEY:
             try:
                 print("Attempting to parse with OpenRouter...")
                 response = HistoryService._call_openrouter(system_prompt, user_prompt)
-                return ParsedWorkoutLog.model_validate_json(response)
+                parsed = HistoryService._validate_parsed_workout_json(response)
             except Exception as e:
                 print(f"OpenRouter parsing failed: {e}")
 
-        raise Exception("Failed to parse workout using available LLM providers.")
+        if parsed is None:
+            raise Exception("Failed to parse workout using available LLM providers.")
+
+        return normalize_parsed_dates(raw_text, parsed, today)
 
     @staticmethod
     def _call_groq(system_prompt: str, user_prompt: str) -> str:

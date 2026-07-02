@@ -1,0 +1,4 @@
+mcp>=1.10.0
+python-dotenv>=1.1.1
+pydantic>=2.13.3
+supabase>=2.23.2

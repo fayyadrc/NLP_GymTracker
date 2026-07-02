@@ -1,10 +1,9 @@
 import os
 import time
 import requests
-from dotenv import load_dotenv
+from ...core import dotenv_loader
 from supabase import create_client, Client
-
-load_dotenv()
+from ..analytics.service import AnalyticsService
 
 # ===== CONFIG =====
 CLIENT_ID = os.environ.get("STRAVA_CLIENT_ID", "234307")
@@ -144,9 +143,11 @@ def sync_strava_data():
             print(f"   Inserted batch {i//batch_size + 1}: {inserted_count} records")
             
         print(f"✅ Successfully synced {total_inserted} activities to Supabase!")
+        AnalyticsService.clear_cache()
         
     except Exception as e:
         print(f"❌ Error during Strava sync: {e}")
+        raise e
 
 if __name__ == "__main__":
     sync_strava_data()

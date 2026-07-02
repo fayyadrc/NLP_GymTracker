@@ -1,7 +1,5 @@
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
+from . import dotenv_loader
 
 class Settings:
     SUPABASE_URL = os.environ.get("SUPABASE_URL")
