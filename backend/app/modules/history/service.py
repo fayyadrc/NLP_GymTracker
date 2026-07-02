@@ -8,11 +8,8 @@ from .schemas import WorkoutSession, WorkoutEntry, StravaActivity, ParsedWorkout
 from .date_utils import normalize_parsed_dates
 from ..analytics.muscle_mapping import get_muscle_info, normalize_exercise_name
 
-from dotenv import load_dotenv
+from ...core import dotenv_loader
 from datetime import date, timedelta
-
-# Load environment variables
-load_dotenv()
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")

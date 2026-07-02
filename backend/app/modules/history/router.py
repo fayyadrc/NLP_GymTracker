@@ -7,6 +7,7 @@ from ...db.supabase import supabase
 from .schemas import WorkoutSession, WorkoutEntry
 from .service import HistoryService
 from ..analytics.muscle_mapping import get_muscle_info, normalize_exercise_name
+from ..analytics.service import AnalyticsService
 
 router = APIRouter()
 
@@ -48,6 +49,7 @@ def _insert_parsed_workout(parsed_data):
 
     if records_to_insert:
         supabase.table("gym_logs").insert(records_to_insert).execute()
+        AnalyticsService.clear_cache()
 
     return records_to_insert
 
@@ -151,6 +153,7 @@ def update_workout_log(log_id: str, entry: WorkoutEntry):
     success = HistoryService.update_log(log_id, entry)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to update workout log")
+    AnalyticsService.clear_cache()
     return {"status": "success"}
 
 @router.delete("/history/log/{log_id}")
@@ -158,4 +161,5 @@ def delete_workout_log(log_id: str):
     success = HistoryService.delete_log(log_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete workout log")
+    AnalyticsService.clear_cache()
     return {"status": "success"}

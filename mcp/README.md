@@ -28,7 +28,7 @@ Lean MCP server for RepCount workout queries and writes.
    ```
 3. Run the MCP server directly:
    ```bash
-   python mcp/server.py
+   python mcp/run_server.py
    ```
 
    Or use the existing backend app and visit the mounted endpoint at `/mcp`.

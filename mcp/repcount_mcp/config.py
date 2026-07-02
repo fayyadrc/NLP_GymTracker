@@ -12,7 +12,11 @@ except ModuleNotFoundError:  # pragma: no cover - optional in bare test environm
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-load_dotenv(ROOT_DIR / ".env")
+backend_env = ROOT_DIR / "backend" / ".env"
+if backend_env.exists():
+    load_dotenv(backend_env)
+else:
+    load_dotenv(ROOT_DIR / ".env")
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from functools import lru_cache
 
 from mcp.server.fastmcp import FastMCP
@@ -21,7 +19,7 @@ def get_dispatcher() -> RepCountDispatcher:
     name="repcount_action",
     description="Handles gym data queries and updates.",
 )
-def repcount_action(command: str, payload: dict | None = None) -> dict:
+def repcount_action(command: str, payload: dict = None) -> dict:
     """Single-entry tool for lean RepCount operations."""
     return get_dispatcher().dispatch(command=command, payload=payload or {})
 

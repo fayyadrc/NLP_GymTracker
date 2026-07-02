@@ -1,13 +1,50 @@
-
+import os
+import json
 from typing import Dict, List, Any
 from datetime import datetime, timedelta
 from collections import defaultdict
 from ...db.supabase import supabase
 from .muscle_mapping import get_muscle_info, normalize_exercise_name
 
+CACHE_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data",
+    "analytics_cache.json"
+)
+
+# Ensure data directory exists
+os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+
+_cached_stats = None
+
 class AnalyticsService:
     @staticmethod
+    def clear_cache():
+        global _cached_stats
+        _cached_stats = None
+        if os.path.exists(CACHE_FILE):
+            try:
+                os.remove(CACHE_FILE)
+                print("🧹 File cache deleted.")
+            except Exception as e:
+                print(f"Error deleting file cache: {e}")
+
+    @staticmethod
     def get_dashboard_stats() -> Dict[str, Any]:
+        global _cached_stats
+        if _cached_stats is not None:
+            print("🚀 Returning in-memory cached analytics stats.")
+            return _cached_stats
+
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, "r") as f:
+                    _cached_stats = json.load(f)
+                print("📁 Loaded analytics stats from file cache.")
+                return _cached_stats
+            except Exception as e:
+                print(f"Error reading file cache: {e}")
+
         if not supabase:
             return {}
 
@@ -187,7 +224,7 @@ class AnalyticsService:
         for muscle, ex_list in exercises_by_muscle.items():
             formatted_exercises_by_muscle[muscle] = sorted(ex_list, key=lambda x: x["name"])
 
-        return {
+        stats_result = {
             "total_workouts": total_workouts,
             "workouts_this_week": workouts_this_week,
             "volume_per_muscle": volume_data,
@@ -197,3 +234,14 @@ class AnalyticsService:
             "strava_activity_count": len(strava_dates),
             "exercises_by_muscle": formatted_exercises_by_muscle
         }
+
+        _cached_stats = stats_result
+        try:
+            with open(CACHE_FILE, "w") as f:
+                json.dump(stats_result, f)
+            print("📁 Saved analytics stats to file cache.")
+        except Exception as e:
+            print(f"Error writing file cache: {e}")
+
+        return stats_result
+

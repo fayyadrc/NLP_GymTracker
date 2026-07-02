@@ -5,14 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 import mimetypes
-from dotenv import load_dotenv
+from .core import dotenv_loader
 
 # Ensure common web types are registered correctly
 mimetypes.init()
 mimetypes.add_type('application/javascript', '.js')
 mimetypes.add_type('text/css', '.css')
-
-load_dotenv()
 
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
