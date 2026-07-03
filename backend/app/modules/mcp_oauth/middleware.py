@@ -2,6 +2,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from ...mcp_bootstrap import ensure_mcp_on_path
+
+ensure_mcp_on_path()
+
 from repcount_mcp.context import McpRequestContext, mcp_request_context
 
 from .auth import AuthenticatedMcpUser, verify_supabase_access_token
