@@ -8,6 +8,14 @@ from .repository import get_repository
 
 
 mcp = FastMCP(settings.server_name)
+mcp.settings.streamable_http_path = "/"
+mcp.settings.stateless_http = True
+mcp.settings.json_response = True
+
+
+def get_streamable_http_app():
+    """ASGI app for mounting at /mcp on the FastAPI backend."""
+    return mcp.streamable_http_app()
 
 
 @lru_cache(maxsize=1)

@@ -1,18 +1,23 @@
 import os
 import time
+import json
 import requests
 from ...core import dotenv_loader
 from supabase import create_client, Client
 from ..analytics.service import AnalyticsService
 
 # ===== CONFIG =====
-CLIENT_ID = os.environ.get("STRAVA_CLIENT_ID", "234307")
-CLIENT_SECRET = os.environ.get("STRAVA_CLIENT_SECRET", "d22469f5cc510482fff2b760ab9f82b7113c5d4c")
-REFRESH_TOKEN = os.environ.get("STRAVA_REFRESH_TOKEN", "3f0d290b37cc0bdb0c118bb67ba21980a3c5634e")
+# Hardcoded fallbacks removed to comply with Strava API Agreement Sec 1.2 & 6.
+CLIENT_ID = os.environ.get("STRAVA_CLIENT_ID")
+CLIENT_SECRET = os.environ.get("STRAVA_CLIENT_SECRET")
+REFRESH_TOKEN = os.environ.get("STRAVA_REFRESH_TOKEN")
 
 BASE_URL = "https://www.strava.com/api/v3"
 
 def get_access_token():
+    if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN]):
+        raise ValueError("Missing Strava authentication credentials in environment.")
+
     auth_data = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
@@ -50,6 +55,16 @@ def safe_get(url, token, params=None):
         if res.status_code == 401:
             raise Exception("Unauthorized - token likely invalid")
 
+        if res.status_code == 403:
+            if "/athlete/activities" in url:
+                raise Exception(
+                    "Strava rejected activity sync with 403 Forbidden. "
+                    "The current token does not have the required activity read scope. "
+                    "Re-authorize the Strava app with at least 'activity:read' and "
+                    "preferably 'activity:read_all' if you want private activities included."
+                )
+            raise Exception(f"Forbidden by Strava for {url}")
+
         res.raise_for_status()
         return res.json()
 
@@ -83,7 +98,8 @@ def get_all_activity_summaries(token):
             summary = {
                 "id": activity_id,
                 "name": activity.get("name"),
-                "type": activity.get("type"),
+                "type": activity.get("sport_type") or activity.get("type"),
+                "sport_type": activity.get("sport_type") or activity.get("type"),
                 "start_date": activity.get("start_date"),
                 "distance_meters": activity.get("distance"),
                 "duration_seconds": activity.get("moving_time"),
@@ -105,6 +121,47 @@ def get_all_activity_summaries(token):
         time.sleep(1)
 
     return all_summaries
+
+def upload_strength_workout(workout_data: dict):
+    """
+    Uploads structured strength-training data to Strava using the JSON format.
+    Complies with the May 2026 Strava API update for WeightTraining activities.
+    """
+    print("🚀 Starting structured workout upload to Strava...")
+    token, _ = get_access_token()
+
+    strava_json_payload = {
+        "activity_type": "WeightTraining",
+        "start_time": workout_data.get("start_time"),
+        "duration": workout_data.get("duration"),
+        "sets": workout_data.get("sets", []),
+    }
+
+    files = {
+        "file": ("workout.json", json.dumps(strava_json_payload), "application/json")
+    }
+
+    data = {
+        "data_type": "json",
+        "name": workout_data.get("name", "RepCount Strength Workout"),
+        "description": "Logged via RepCount",
+        "sport_type": "WeightTraining",
+    }
+
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+
+    res = requests.post(
+        f"{BASE_URL}/uploads",
+        headers=headers,
+        files=files,
+        data=data,
+    )
+
+    res.raise_for_status()
+    print("✅ Successfully pushed structured strength data to Strava!")
+    return res.json()
 
 def sync_strava_data():
     """Fetches live data from Strava and updates the Supabase database."""

@@ -12,6 +12,8 @@ import { WorkoutDetails } from '@/components/views/WorkoutDetails';
 import { Analytics } from '@/components/views/Analytics';
 import { AIInsights } from '@/components/views/AI_Insights';
 import { LandingPage } from '@/components/landing/LandingPage';
+import { OAuthConsent } from '@/components/oauth/OAuthConsent';
+import { OAuthLogin } from '@/components/oauth/OAuthLogin';
 import { ViewState } from '@/lib/types';
 import { Toaster } from '@/components/ui/toaster';
 import { AnimatePresence } from 'framer-motion';
@@ -142,6 +144,8 @@ export default function Home() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/app" element={<AppShell />} />
+        <Route path="/oauth/login" element={<OAuthLogin />} />
+        <Route path="/oauth/consent" element={<OAuthConsent />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

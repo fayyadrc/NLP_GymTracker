@@ -26,6 +26,8 @@ class Settings:
 
     supabase_url: str | None = os.getenv("SUPABASE_URL")
     supabase_key: str | None = os.getenv("SUPABASE_KEY")
+    supabase_anon_key: str | None = os.getenv("SUPABASE_ANON_KEY")
+    public_app_url: str | None = os.getenv("PUBLIC_APP_URL")
     gym_logs_collection: str = os.getenv("REPCOUNT_GYM_LOGS_COLLECTION", "gym_logs")
     strava_collection: str = os.getenv("REPCOUNT_STRAVA_COLLECTION", "strava_activities")
 
