@@ -99,7 +99,6 @@ def get_all_activity_summaries(token):
                 "id": activity_id,
                 "name": activity.get("name"),
                 "type": activity.get("sport_type") or activity.get("type"),
-                "sport_type": activity.get("sport_type") or activity.get("type"),
                 "start_date": activity.get("start_date"),
                 "distance_meters": activity.get("distance"),
                 "duration_seconds": activity.get("moving_time"),
