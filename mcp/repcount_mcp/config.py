@@ -14,9 +14,9 @@ except ModuleNotFoundError:  # pragma: no cover - optional in bare test environm
 ROOT_DIR = Path(__file__).resolve().parents[2]
 for env_path in (
     ROOT_DIR / "backend" / ".env",
+    ROOT_DIR / ".env",
     ROOT_DIR / ".env.local",
     ROOT_DIR / "backend" / ".env.local",
-    ROOT_DIR / ".env",
 ):
     if env_path.exists():
         load_dotenv(env_path, override=True)

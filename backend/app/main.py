@@ -6,7 +6,7 @@ from .mcp_bootstrap import ensure_mcp_on_path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ensure_mcp_on_path()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -78,9 +78,22 @@ app.include_router(mcp_oauth_router)
 app.add_middleware(McpAuthMiddleware)
 app.mount("/mcp", mcp_http_app)
 
+
+@app.middleware("http")
+async def mcp_trailing_slash(request: Request, call_next):
+    """Route /mcp to the mounted MCP app at /mcp/ (avoids SPA catch-all)."""
+    if request.url.path == "/mcp":
+        request.scope["path"] = "/mcp/"
+        request.scope["raw_path"] = b"/mcp/"
+    return await call_next(request)
+
+
 # Catch-all route to serve the frontend (SPA routing and static files)
 @app.get("/{rest_of_path:path}")
 async def serve_frontend(rest_of_path: str):
+    if rest_of_path == "mcp" or rest_of_path.startswith("mcp/"):
+        return JSONResponse(status_code=404, content={"detail": "MCP endpoint not found"})
+
     # If the path looks like an API call but wasn't caught by the routers above, return 404
     if rest_of_path.startswith("api/") or rest_of_path.startswith(".well-known/") or rest_of_path.startswith("oauth/"):
         return JSONResponse(status_code=404, content={"detail": f"API endpoint '{rest_of_path}' not found"})

@@ -30,7 +30,10 @@ function parseEnvFile(filePath: string): Record<string, string> {
 function resolveSupabaseEnv() {
   const frontendEnv = parseEnvFile(path.resolve(__dirname, ".env"));
   const frontendLocalEnv = parseEnvFile(path.resolve(__dirname, ".env.local"));
-  const backendEnv = parseEnvFile(path.resolve(__dirname, "../backend/.env"));
+  const backendEnv = {
+    ...parseEnvFile(path.resolve(__dirname, "../backend/.env")),
+    ...parseEnvFile(path.resolve(__dirname, "../backend/.env.local")),
+  };
   const rootLocalEnv = parseEnvFile(path.resolve(__dirname, "../.env.local"));
 
   return {
@@ -45,6 +48,7 @@ function resolveSupabaseEnv() {
       frontendLocalEnv.VITE_SUPABASE_ANON_KEY ??
       frontendEnv.VITE_SUPABASE_ANON_KEY ??
       backendEnv.SUPABASE_ANON_KEY ??
+      backendEnv.SUPABASE_KEY ??
       "",
     publicAppUrl:
       process.env.VITE_PUBLIC_APP_URL ??

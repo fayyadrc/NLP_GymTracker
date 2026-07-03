@@ -8,6 +8,7 @@ _root_dir = os.path.dirname(_backend_dir)
 
 _env_files = (
     os.path.join(_backend_dir, ".env"),
+    os.path.join(_root_dir, ".env"),
     os.path.join(_root_dir, ".env.local"),
     os.path.join(_backend_dir, ".env.local"),
 )

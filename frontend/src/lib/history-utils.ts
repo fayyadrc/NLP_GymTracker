@@ -1,9 +1,9 @@
-import type { WorkoutSession, WorkoutEntry } from '@/lib/types';
+import type { WorkoutSession, WorkoutEntry, WorkoutSplit } from '@/lib/types';
 import { buildWorkoutDraftFromSession } from '@/lib/quick-log-parser';
-import { inferSplitFromEntries, type WorkoutSplit } from '@/lib/split-inference';
+import { inferSplitFromEntries } from '@/lib/split-inference';
 import { getCustomSessionTitle } from '@/lib/session-titles';
 
-export type { WorkoutSplit } from '@/lib/split-inference';
+export type { WorkoutSplit } from '@/lib/types';
 
 export interface SessionProgress {
   volumeDeltaPct: number | null;

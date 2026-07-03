@@ -1,7 +1,7 @@
-import type { WorkoutEntry } from '@/lib/types';
+import type { WorkoutEntry, WorkoutSplit } from '@/lib/types';
 import { getMuscleInfo } from '@/lib/muscle-mapping';
 
-export type WorkoutSplit = 'Push' | 'Pull' | 'Legs' | 'Upper' | 'Lower' | 'Cardio' | 'Workout';
+export type { WorkoutSplit } from '@/lib/types';
 
 const PUSH_MUSCLES = new Set(['Chest', 'Shoulders', 'Triceps']);
 const PULL_MUSCLES = new Set(['Back', 'Biceps']);

@@ -21,7 +21,6 @@ const EQUIPMENT_PREFIXES = [
   'incline',
   'decline',
   'single arm',
-  'single wirst',
   'single wrist',
   'one arm',
   'assisted',
