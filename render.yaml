@@ -24,9 +24,13 @@ services:
         sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_PUBLIC_APP_URL
         sync: false
       - key: GROQ_API_KEY
         sync: false
