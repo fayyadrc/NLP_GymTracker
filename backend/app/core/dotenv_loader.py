@@ -1,9 +1,18 @@
 import os
 from dotenv import load_dotenv
 
-# Resolve path to backend/.env (3 levels up from backend/app/core/dotenv_loader.py)
+# backend/app/core -> backend/
 _backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_env_path = os.path.join(_backend_dir, ".env")
+# repo root (parent of backend/)
+_root_dir = os.path.dirname(_backend_dir)
 
-print(f"Loading env from: {_env_path}")
-load_dotenv(dotenv_path=_env_path)
+_env_files = (
+    os.path.join(_backend_dir, ".env"),
+    os.path.join(_root_dir, ".env.local"),
+    os.path.join(_backend_dir, ".env.local"),
+)
+
+for env_path in _env_files:
+    if os.path.exists(env_path):
+        print(f"Loading env from: {env_path}")
+        load_dotenv(dotenv_path=env_path, override=True)

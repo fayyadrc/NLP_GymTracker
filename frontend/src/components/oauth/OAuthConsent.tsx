@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabase";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import { SupabaseSetupNotice } from "@/components/oauth/SupabaseSetupNotice";
 
 type AuthorizationDetails = {
   authorization_id?: string;
@@ -22,6 +23,11 @@ export function OAuthConsent() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
+
     async function loadAuthorizationDetails() {
       if (!authorizationId) {
         setError("Missing authorization_id in the URL.");
@@ -29,6 +35,7 @@ export function OAuthConsent() {
         return;
       }
 
+      const supabase = getSupabase();
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -68,6 +75,10 @@ export function OAuthConsent() {
     void loadAuthorizationDetails();
   }, [authorizationId, navigate]);
 
+  if (!isSupabaseConfigured) {
+    return <SupabaseSetupNotice />;
+  }
+
   async function handleDecision(decision: "approve" | "deny") {
     if (!authorizationId) {
       return;
@@ -76,6 +87,7 @@ export function OAuthConsent() {
     setSubmitting(decision);
     setError(null);
 
+    const supabase = getSupabase();
     const oauth = supabase.auth.oauth as {
       approveAuthorization: (
         id: string,

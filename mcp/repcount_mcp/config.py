@@ -12,11 +12,14 @@ except ModuleNotFoundError:  # pragma: no cover - optional in bare test environm
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-backend_env = ROOT_DIR / "backend" / ".env"
-if backend_env.exists():
-    load_dotenv(backend_env)
-else:
-    load_dotenv(ROOT_DIR / ".env")
+for env_path in (
+    ROOT_DIR / "backend" / ".env",
+    ROOT_DIR / ".env.local",
+    ROOT_DIR / "backend" / ".env.local",
+    ROOT_DIR / ".env",
+):
+    if env_path.exists():
+        load_dotenv(env_path, override=True)
 
 
 @dataclass(frozen=True)
@@ -27,9 +30,17 @@ class Settings:
     supabase_url: str | None = os.getenv("SUPABASE_URL")
     supabase_key: str | None = os.getenv("SUPABASE_KEY")
     supabase_anon_key: str | None = os.getenv("SUPABASE_ANON_KEY")
-    public_app_url: str | None = os.getenv("PUBLIC_APP_URL")
     gym_logs_collection: str = os.getenv("REPCOUNT_GYM_LOGS_COLLECTION", "gym_logs")
     strava_collection: str = os.getenv("REPCOUNT_STRAVA_COLLECTION", "strava_activities")
+
+    @property
+    def public_app_url(self) -> str | None:
+        explicit = (os.getenv("PUBLIC_APP_URL") or "").strip().rstrip("/")
+        if explicit:
+            return explicit
+        if os.getenv("RENDER") == "true" or os.getenv("ENVIRONMENT") == "production":
+            return None
+        return "http://localhost:8002"
 
 
 settings = Settings()

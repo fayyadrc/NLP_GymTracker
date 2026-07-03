@@ -1,7 +1,9 @@
 import type { WorkoutSession, WorkoutEntry } from '@/lib/types';
 import { buildWorkoutDraftFromSession } from '@/lib/quick-log-parser';
+import { inferSplitFromEntries, type WorkoutSplit } from '@/lib/split-inference';
+import { getCustomSessionTitle } from '@/lib/session-titles';
 
-export type WorkoutSplit = 'Push' | 'Pull' | 'Legs' | 'Upper' | 'Lower' | 'Cardio' | 'Workout';
+export type { WorkoutSplit } from '@/lib/split-inference';
 
 export interface SessionProgress {
   volumeDeltaPct: number | null;
@@ -17,10 +19,6 @@ export interface MonthlySummaryData {
   totalVolumeKg: number;
   volumeTrendPct: number | null;
 }
-
-const PUSH_KEYWORDS = ['bench', 'press', 'pec', 'chest', 'tricep', 'pushdown', 'fly', 'dip', 'shoulder'];
-const PULL_KEYWORDS = ['pull', 'row', 'lat', 'curl', 'bicep', 'chin', 'face pull', 'pulldown'];
-const LEGS_KEYWORDS = ['squat', 'leg', 'lunge', 'rdl', 'deadlift', 'calf', 'glute', 'hamstring', 'hip thrust'];
 
 export function getSessionVolume(session: WorkoutSession): number {
   if (session.totalVolumeKg != null) return session.totalVolumeKg;
@@ -71,44 +69,14 @@ export function shortenExerciseName(name: string): string {
     .trim();
 }
 
-function scoreExercises(entries: WorkoutEntry[], keywords: string[]): number {
-  return entries.reduce((score, entry) => {
-    const name = entry.exercise.toLowerCase();
-    return score + (keywords.some((kw) => name.includes(kw)) ? 1 : 0);
-  }, 0);
-}
-
 export function inferWorkoutSplit(session: WorkoutSession): WorkoutSplit {
   if (isPureStravaSession(session)) return 'Cardio';
-
-  const titleMatch = session.rawInput?.match(/\b(Push|Pull|Legs|Upper|Lower)\b/i);
-  if (titleMatch) {
-    const value = titleMatch[1];
-    return (value.charAt(0).toUpperCase() + value.slice(1).toLowerCase()) as WorkoutSplit;
-  }
-
-  const entries = session.entries;
-  if (entries.length === 0) return 'Workout';
-
-  const push = scoreExercises(entries, PUSH_KEYWORDS);
-  const pull = scoreExercises(entries, PULL_KEYWORDS);
-  const legs = scoreExercises(entries, LEGS_KEYWORDS);
-
-  const max = Math.max(push, pull, legs);
-  if (max === 0) return 'Workout';
-  if (legs === max && legs >= push && legs >= pull) return 'Legs';
-  if (push === max && pull > 0 && Math.abs(push - pull) <= 1) return 'Upper';
-  if (push === max) return 'Push';
-  if (pull === max) return 'Pull';
-  return 'Workout';
+  if (session.inferredSplit) return session.inferredSplit;
+  if (session.entries.length === 0) return 'Workout';
+  return inferSplitFromEntries(session.entries);
 }
 
-export function getWorkoutTitle(session: WorkoutSession): string {
-  const namedDay = session.rawInput?.match(/\b((?:Push|Pull|Legs|Upper|Lower)(?:\s+Day)?)\b/i)?.[1];
-  if (namedDay) {
-    return namedDay.toLowerCase().includes('day') ? namedDay : `${namedDay} Day`;
-  }
-
+export function getAutoWorkoutTitle(session: WorkoutSession): string {
   if (isPureStravaSession(session)) {
     const primary = session.stravaActivities?.[0];
     return primary?.name || primary?.type || 'Cardio Session';
@@ -124,6 +92,12 @@ export function getWorkoutTitle(session: WorkoutSession): string {
   }
 
   return 'Workout';
+}
+
+export function getWorkoutTitle(session: WorkoutSession): string {
+  const customTitle = getCustomSessionTitle(session.id);
+  if (customTitle) return customTitle;
+  return getAutoWorkoutTitle(session);
 }
 
 export function formatDuration(mins: number): string {

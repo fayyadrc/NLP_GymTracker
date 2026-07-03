@@ -1,6 +1,11 @@
 import os
-import sys
 from contextlib import asynccontextmanager, AsyncExitStack
+
+from .mcp_bootstrap import ensure_mcp_on_path
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ensure_mcp_on_path()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -22,11 +27,6 @@ from .modules.strava.service import sync_strava_data
 from .modules.analytics.router import router as analytics_router
 from .modules.mcp_oauth.middleware import McpAuthMiddleware
 from .modules.mcp_oauth.router import router as mcp_oauth_router
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MCP_DIR = os.path.join(BASE_DIR, "mcp")
-if MCP_DIR not in sys.path:
-    sys.path.append(MCP_DIR)
 
 from repcount_mcp.server import get_streamable_http_app, mcp as repcount_mcp
 

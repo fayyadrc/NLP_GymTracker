@@ -43,11 +43,14 @@ export interface StravaActivity {
   calories?: number | null;
 }
 
+export type WorkoutSplit = 'Push' | 'Pull' | 'Legs' | 'Upper' | 'Lower' | 'Cardio' | 'Workout';
+
 export interface WorkoutSession {
   id: string;
   date: string;          // ISO date string (YYYY-MM-DD)
   entries: WorkoutEntry[];
   rawInput: string;      // The original natural-language input
+  inferredSplit?: WorkoutSplit;
   // Enriched fields from merged data
   totalVolumeKg?: number;
   totalReps?: number;

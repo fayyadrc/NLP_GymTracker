@@ -29,6 +29,7 @@ class WorkoutSession(BaseModel):
     date: str
     entries: List[WorkoutEntry]
     rawInput: str = ""
+    inferredSplit: Optional[str] = None
     totalVolumeKg: float = 0.0
     totalReps: int = 0
     durationMins: Optional[float] = None

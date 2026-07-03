@@ -12,9 +12,19 @@ services:
       - key: PYTHON_VERSION
         value: 3.12.3
       - key: SUPABASE_URL
-        value: "YOUR_SUPABASE_URL_HERE"
+        value: https://olppdhmwjkeuvkxihhcj.supabase.co
       - key: SUPABASE_KEY
-        value: "YOUR_SUPABASE_KEY_HERE"
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: PUBLIC_APP_URL
+        value: https://gymtracker.onrender.com
+      - key: VITE_SUPABASE_URL
+        value: https://olppdhmwjkeuvkxihhcj.supabase.co
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_PUBLIC_APP_URL
+        value: https://gymtracker.onrender.com
       - key: GROQ_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY
@@ -24,4 +34,6 @@ services:
       paths:
         - backend/**
         - frontend/**
+        - mcp/**
         - requirements.txt
+        - runtime.txt
