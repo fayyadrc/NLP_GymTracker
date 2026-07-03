@@ -1,7 +1,8 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabase";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import { SupabaseSetupNotice } from "@/components/oauth/SupabaseSetupNotice";
 
 export function OAuthLogin() {
   const navigate = useNavigate();
@@ -13,12 +14,16 @@ export function OAuthLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  if (!isSupabaseConfigured) {
+    return <SupabaseSetupNotice />;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { error: signInError } = await getSupabase().auth.signInWithPassword({
       email,
       password,
     });

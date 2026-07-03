@@ -130,13 +130,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         summary = _format_summary(data)
         await update.message.reply_text(summary, parse_mode="Markdown")
 
-    except httpx.HTTPStatusError as e:
+    except httpx.HTTPStatusError as error:
         try:
-            detail = e.response.json().get("detail", str(e))
+            detail = error.response.json().get("detail", str(error))
         except Exception:
-            detail = str(e)
+            detail = str(error)
         await update.message.reply_text(
-            f"❌ *Backend error ({e.response.status_code}):* {detail}",
+            f"❌ *Backend error ({error.response.status_code}):* {detail}",
             parse_mode="Markdown",
         )
     except httpx.TimeoutException:
@@ -144,9 +144,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⌛ *Request timed out.* The backend took too long to respond. Try again in a moment.",
             parse_mode="Markdown",
         )
-    except Exception as e:
+    except Exception as error:
         await update.message.reply_text(
-            f"❌ *Unexpected error:* {str(e)}",
+            f"❌ *Unexpected error:* {str(error)}",
             parse_mode="Markdown",
         )
 
@@ -162,7 +162,6 @@ def main():
     print(f"🔒 Chat allowlist: {ALLOWED_CHAT_ID or 'disabled (open)'}")
 
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

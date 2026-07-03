@@ -5,25 +5,34 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from ...core import dotenv_loader  # noqa: F401
+from ...core.app_url import get_public_app_url
 
 
 @dataclass(frozen=True)
 class McpOAuthSettings:
-    supabase_url: str | None = os.getenv("SUPABASE_URL")
-    supabase_anon_key: str | None = os.getenv("SUPABASE_ANON_KEY")
-    public_app_url: str | None = os.getenv("PUBLIC_APP_URL")
+    @property
+    def supabase_url(self) -> str | None:
+        return os.getenv("SUPABASE_URL")
+
+    @property
+    def supabase_anon_key(self) -> str | None:
+        return os.getenv("SUPABASE_ANON_KEY")
+
+    @property
+    def public_app_url(self) -> str | None:
+        return get_public_app_url()
 
     @property
     def mcp_resource_url(self) -> str | None:
         if not self.public_app_url:
             return None
-        return f"{self.public_app_url.rstrip('/')}/mcp"
+        return f"{self.public_app_url}/mcp"
 
     @property
     def protected_resource_metadata_url(self) -> str | None:
         if not self.public_app_url:
             return None
-        return f"{self.public_app_url.rstrip('/')}/.well-known/oauth-protected-resource"
+        return f"{self.public_app_url}/.well-known/oauth-protected-resource"
 
     @property
     def supabase_auth_issuer(self) -> str | None:

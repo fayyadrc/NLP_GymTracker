@@ -7,6 +7,7 @@ import httpx
 from .schemas import WorkoutSession, WorkoutEntry, StravaActivity, ParsedWorkoutLog
 from .date_utils import normalize_parsed_dates
 from ..analytics.muscle_mapping import get_muscle_info, normalize_exercise_name
+from ..analytics.split_inference import infer_workout_split
 
 from ...core import dotenv_loader
 from datetime import date, timedelta
@@ -114,11 +115,19 @@ class HistoryService:
             avg_heart_rate = (weight_hr_sum / weight_hr_count) if weight_hr_count > 0 else None
             duration_mins = total_duration_secs / 60.0 if total_duration_secs > 0 else None
 
+            exercise_names = [e.exercise for e in entries]
+            inferred_split = None
+            if exercise_names:
+                inferred_split = infer_workout_split(exercise_names)
+            elif strava_list and not entries:
+                inferred_split = "Cardio"
+
             session = WorkoutSession(
                 id=f"session-{date_str}",
                 date=date_str,
                 entries=entries,
                 rawInput="Fetched from database",
+                inferredSplit=inferred_split,
                 totalVolumeKg=round(total_volume, 2),
                 totalReps=total_reps,
                 durationMins=round(duration_mins, 2) if duration_mins else None,
