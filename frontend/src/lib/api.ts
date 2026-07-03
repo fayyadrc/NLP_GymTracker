@@ -31,7 +31,16 @@ export const api = {
         method: 'POST',
       });
       if (!response.ok) {
-        throw new Error('Failed to trigger Strava sync');
+        let detail = 'Failed to trigger Strava sync';
+        try {
+          const errorData = await response.json();
+          if (errorData?.detail) {
+            detail = errorData.detail;
+          }
+        } catch {
+          // Fall back to the generic message when the response body is not JSON.
+        }
+        throw new Error(detail);
       }
       return await response.json();
     } catch (error) {

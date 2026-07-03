@@ -55,3 +55,4 @@ Input shape:
 - `log_workout` reuses the existing workout parser from `backend/app/modules/history/service.py`.
 - `get_latest` and `get_stats` intentionally return summaries instead of broad history payloads.
 - The existing FastAPI app mounts the MCP endpoint at `/mcp`, which is suitable for using the same Render service for Claude Mobile/Web.
+- For Claude connector setup, see `mcp/CLAUDE_CONNECTOR.md`.
